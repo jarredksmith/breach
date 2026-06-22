@@ -32,6 +32,6 @@ assert(/id="mpBots"/.test(html), 'lobby has a bot-count input');
 assert(/NET\.botCount=\(NET\.gameMode==='duel'\)\?0:\(\(bn>=0&&bn<=7\)\?bn:0\);/.test(src), 'host reads the bot count (never in a duel)');
 assert(/const botMeshes = bots\.map\(b=>b\.mesh\);.*rayTargets = \[\.\.\.playerMeshes, \.\.\.botMeshes,/s.test(src), 'bots are in the raycast targets so real players can hit them');
 assert(/if\(NET\.mode==='host'\)\{ spawnBots\(NET\.botCount\|\|0\);/.test(src), 'host spawns bots on start');
-assert(/if\(!NAV\.built && typeof navBuildBegin==='function'\) navBuildBegin\(\); matchWarmup=3;/.test(src), 'bot match kicks off the nav build + pre-match countdown');
+assert(/if\(\(NET\.botCount\|\|0\)>0 && !NAV\.built && typeof navBuildBegin==='function'\) navBuildBegin\(\);/.test(src) && /matchWarmup=3; _warmupBroadcast=false;/.test(src), 'bot match kicks off the nav build + pre-match countdown');
 assert(/updateBots\(dt\);/.test(src), 'loop ticks the bots');
 done('bots');

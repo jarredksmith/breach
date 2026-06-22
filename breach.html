@@ -11359,6 +11359,8 @@ function botHurt(b, dmg, sx, sz){
   return false;
 }
 let matchWarmup = 0;
+let _warmupBroadcast = false;   // build 624: host has sent the live {t:'warmup'} count to clients this match (sent once)
+let _clientWarmupHold = false;  // build 624: client is frozen on "GET READY" until the host's synced count arrives
 let _repathBudget = 0;   // A* searches allowed per frame (reset each updateBots tick) so a frame never stalls on many repaths at once   // pre-match build/countdown window (host bot matches): bots are held inert until the nav grid is ready
 // build 547: per-frame raycast budgets shared by the bot tick AND the enemy tick (they never run together —
 // bots are PvP-only, enemies are PvE-only — so each subsystem gets the full budget). The per-entity time
@@ -11387,14 +11389,22 @@ function _setCountdown(html){
 function navWarmupTick(dt){
   if(matchWarmup<=0) return false;
   if(typeof duelInvuln!=='undefined') duelInvuln = Math.max(duelInvuln, 1.0);   // no spawn-shooting during warmup
-  if(!NAV.built){
+  // build 624: a CLIENT freezes on "GET READY" and does NOT run its own clock until the host broadcasts the live
+  // count ({t:'warmup'}). That message resets matchWarmup to the host's remaining seconds, so the 3-2-1-GO lands
+  // together (within one message latency) instead of every client running an independent, earlier countdown.
+  if(NET.mode==='client' && _clientWarmupHold){ _setCountdown('GET READY'); return true; }
+  // The bot nav grid is built hard during the countdown — but ONLY the host needs it (bots are host-side), so a
+  // client (or a host with no bots) skips straight to the timer instead of waiting on a grid it never builds.
+  if(!NAV.built && NET.mode==='host' && bots.length){
     if(typeof navBuildStep==='function') navBuildStep(18);   // big budget: it's a loading screen, smoothness matters less than finishing
     _setCountdown('GENERATING ARENA<div style="font-size:15px;letter-spacing:2px;margin-top:8px;opacity:.8">'+(typeof navBuildProgress==='function'?navBuildProgress():0)+'%</div>');
     return true;
   }
-  matchWarmup -= dt;   // grid ready -> short go countdown
+  // grid ready (or not needed) -> the host announces the live count ONCE so every client starts the same 3-2-1.
+  if(NET.mode==='host' && !_warmupBroadcast){ _warmupBroadcast=true; for(const id in NET.conns){ try{ NET.conns[id].send({t:'warmup', secs:matchWarmup}); }catch(e){} } }
+  matchWarmup -= dt;   // short go countdown
   if(matchWarmup>0){ _setCountdown(String(Math.max(1,Math.ceil(matchWarmup)))); return true; }
-  _setCountdown('GO!'); setTimeout(()=>_setCountdown(null), 650); matchWarmup=0; return false;
+  _setCountdown('GO!'); setTimeout(()=>_setCountdown(null), 650); matchWarmup=0; _clientWarmupHold=false; return false;
 }
 function updateBots(dt){
   if(NET.mode!=='host' || !pvpMode() || !gameOn || !bots.length) return;
@@ -12783,6 +12793,7 @@ function handleHostMsg(msg){
     if(msg.phase==='lobby'){ showClientLobby(); } else { startGame(); }
   }
   else if(msg.t==='begin'){ NET.phase='playing'; closeModal('lobby'); if(typeof closeMatchMenu==='function') closeMatchMenu(); startGame(); }
+  else if(msg.t==='warmup'){ matchWarmup = (msg.secs!=null ? +msg.secs : 3); _clientWarmupHold=false; }   // build 624: host's synced start count — resyncs our countdown so 3-2-1-GO lands together
   else if(msg.t==='lobby'){ NET.lobbyRoster=msg.players||[]; if(NET.phase==='lobby') renderLobby(NET.lobbyRoster); }
   else if(msg.t==='world'){ applyWorld(msg); }
   else if(msg.t==='hurt'){ applyEnemyDamageToSelf(msg.d); }
@@ -14240,7 +14251,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 623 · 2026-06-22';
+const BUILD_VERSION = 'build 624 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -21881,7 +21892,11 @@ function startGame(){
     if(NET.gameMode==='cp'){ NET.cpOwner=-1; NET.cpCap=0; NET.cpCapTeam=-1; NET.cpContested=false; NET.cpScore={0:0,1:0}; _cpBcT=0; buildCpZone(); } else if(cpZone){ cpZone.visible=false; }
     giveDuelLoadout();
     if(NET.mode==='host'){ spawnBots(NET.botCount||0);
-      if((NET.botCount||0)>0){ if(!NAV.built && typeof navBuildBegin==='function') navBuildBegin(); matchWarmup=3; } }
+      if((NET.botCount||0)>0 && !NAV.built && typeof navBuildBegin==='function') navBuildBegin();
+      // build 624: every PvP host match runs the countdown (with bots OR a pure human duel), and broadcasts the
+      // live count to clients so the start is synced and everyone actually sees it.
+      matchWarmup=3; _warmupBroadcast=false; _clientWarmupHold=false; }
+    else if(NET.mode==='client'){ matchWarmup=3; _clientWarmupHold=true; _warmupBroadcast=false; }   // hold on GET READY until the host's synced count arrives
     const sp = randomSpawn();
     player.pos.set(sp.x, (sp.y!=null?sp.y:terrainHeightAt(sp.x, sp.z))+EYE, sp.z); player.yaw = sp.yaw;
     toSpawn = 0;

@@ -20,7 +20,7 @@ assert(/function navBuildProgress\(\)/.test(src), 'build exposes a progress %');
 // (3) warmup + countdown
 const w = extractFunction('navWarmupTick');
 assert(/if\(matchWarmup<=0\) return false;/.test(w), 'warmup is inert outside a match start');
-assert(/if\(!NAV\.built\)\{[\s\S]*navBuildStep\(18\);[\s\S]*GENERATING ARENA/.test(w), 'while building: big budget + a "generating" screen');
+assert(/if\(!NAV\.built && NET\.mode==='host' && bots\.length\)\{[\s\S]*navBuildStep\(18\);[\s\S]*GENERATING ARENA/.test(w), 'while building (host with bots only): big budget + a "generating" screen');
 assert(/_setCountdown\(String\(Math\.max\(1,Math\.ceil\(matchWarmup\)\)\)\);/.test(w), 'once built: a numeric go countdown');
 const ub = extractFunction('loop');
 assert(/if\(typeof navWarmupTick==='function' && navWarmupTick\(dt\)\)\{[^}]*\} else updateBots\(dt\);/.test(src), 'bots are held inert during warmup');
