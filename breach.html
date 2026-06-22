@@ -14419,7 +14419,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 639 · 2026-06-22';
+const BUILD_VERSION = 'build 640 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16614,8 +16614,23 @@ function ceilingAt(x, z, feetY){
   }
   return lowest;
 }
-// Axis-separated move with a body-radius probe ahead, so walls block and you slide along them
-// while ramps/steps within STEP are walked up.
+// build 640: ledge mantle — pull up onto a chest/head-high ledge in front of you (jump or fall toward it while
+// holding forward). MANTLE_MIN is taller than an auto-step (STEP=0.6) so only real ledges grab; MANTLE_MAX caps
+// the reach. mantleLedge() is a reusable, testable probe: given a point in front + your feet height it returns the
+// ledge-top Y you'd climb onto, or null (too low / too tall / can't stand up there).
+const MANTLE_MIN = STEP + 0.05, MANTLE_MAX = 2.05, MANTLE_DUR = 0.42;
+let _mantle = null;   // { t, sx,sz,fy0, tx,tz,ty } while pulling up
+function mantleLedge(fx, fz, feetY){
+  if(typeof surfaceTopAt!=='function') return null;
+  const top = surfaceTopAt(fx, fz);
+  if(top === -Infinity || !isFinite(top)) return null;
+  const rise = top - feetY;
+  if(rise < MANTLE_MIN || rise > MANTLE_MAX) return null;                            // too low (just step up) or too tall to grab
+  if(typeof clearAt==='function' && !clearAt(fx, fz, top + 0.05)) return null;       // the body must fit standing on the ledge
+  const hp = (typeof effPlayerHeight==='function') ? effPlayerHeight() : (typeof PLAYER_HEIGHT!=='undefined'?PLAYER_HEIGHT:1.7);
+  if(typeof ceilingAt==='function' && ceilingAt(fx, fz, top) < top + hp*0.9) return null;   // need headroom above the ledge
+  return top;
+}
 function moveHorizontal(x, z, dx, dz, feetY){
   const R = player.radius;
   const stuck = insideSolid(x, z, feetY);   // already embedded -> let the player walk out instead of freezing
@@ -17183,9 +17198,28 @@ function loop(){
   if(player.jumpCd>0) player.jumpCd-=dt;
   const _jHeld = !!(keys['Space']||padJump);
   const _jPressed = (_jHeld && !_jumpHeldPrev) || touchJump;   // rising edge for held inputs; the touch button is already a one-frame pulse
-  if(_jPressed && player.onGround && (player.jumpCd||0)<=0 && !_levelLoaderActive && matchWarmup<=0 && !mountedTurret){ player.vel.y = JUMP; player.onGround=false; sliding=false; player.jumpCd=JUMP_CD; SFX.jump(); }
+  // build 640: ledge mantle — jumping or falling toward a chest/head-high ledge while pushing FORWARD grabs it and
+  // pulls you up onto the top. Preempts the jump on this frame so you climb instead of bonking the wall.
+  if(!_mantle && gameOn && !editorOpen && !mountedTurret && !sliding && !duelDead && !_levelLoaderActive && matchWarmup<=0 && (_jPressed || !player.onGround) && wish.dot(forward) > 0.5){
+    const _fy = player.pos.y - EYE;
+    const _fx = player.pos.x + forward.x*0.55, _fz = player.pos.z + forward.z*0.55;
+    const _lt = mantleLedge(_fx, _fz, _fy);
+    if(_lt!=null){ _mantle = { t:0, sx:player.pos.x, sz:player.pos.z, fy0:player.pos.y, tx:_fx + forward.x*0.35, tz:_fz + forward.z*0.35, ty:_lt+EYE }; player.vel.x=0; player.vel.y=0; player.vel.z=0; sliding=false; if(typeof SFX!=='undefined' && SFX.jump) SFX.jump(); }
+  }
+  if(!_mantle && _jPressed && player.onGround && (player.jumpCd||0)<=0 && !_levelLoaderActive && matchWarmup<=0 && !mountedTurret){ player.vel.y = JUMP; player.onGround=false; sliding=false; player.jumpCd=JUMP_CD; SFX.jump(); }
   _jumpHeldPrev = _jHeld;
   touchJump = false;   // tap is consumed for one frame
+  if(_mantle){
+    // hang -> pull-up: rise first, then sweep forward onto the ledge top (smoothstep on each phase)
+    _mantle.t += dt/MANTLE_DUR; const _mt=Math.min(1,_mantle.t);
+    const _ss=(x)=>{ x=Math.max(0,Math.min(1,x)); return x*x*(3-2*x); };
+    const _up=_ss(Math.min(1,_mt/0.55)), _fw=_ss(Math.max(0,(_mt-0.5)/0.5));
+    player.pos.y = _mantle.fy0 + (_mantle.ty-_mantle.fy0)*_up;
+    player.pos.x = _mantle.sx + (_mantle.tx-_mantle.sx)*_fw;
+    player.pos.z = _mantle.sz + (_mantle.tz-_mantle.sz)*_fw;
+    player.vel.x=0; player.vel.y=0; player.vel.z=0; player.onGround=false;
+    if(_mt>=1){ player.pos.x=_mantle.tx; player.pos.y=_mantle.ty; player.pos.z=_mantle.tz; player.onGround=true; _mantle=null; }
+  } else {
   player.vel.y -= GRAV*dt;
   // one-shot vertical knock from physics props (e.g. a fast body launching the player)
   if(player.extVel.y){ player.vel.y += player.extVel.y; player.onGround=false; player.extVel.y = 0; }
@@ -17224,6 +17258,7 @@ function loop(){
     player.onGround = false;
   }
   }   // end classic-movement branch
+  }   // end mantle/normal branch
   // footsteps: paced by horizontal speed, only while grounded and actually moving (not sliding/airborne)
   if(gameOn && player.onGround && !sliding){
     const hspd = Math.hypot(player.vel.x, player.vel.z);
