@@ -8,7 +8,7 @@ const page = html;
 // editor controls
 assert(/sel\.userData\.onFire=frcb\.checked/.test(src), 'prop editor has an On-fire toggle');
 assert(/mkF\('Burn dmg',0,60,1/.test(src), 'On-fire exposes a contact damage/sec slider');
-assert(/if\(sel\.userData\.explosive\)\{\s*mkF\('Fuse',0,15,0\.5/.test(src), 'an explosive burning prop exposes a Fuse-before-blast slider');
+assert(/mkSlider\('Fuse',0,15,0\.5/.test(src), 'the Explosive section exposes a Fuse slider (shoot-to-light, independent of On-fire so it is not pre-lit at load)');
 
 // serialize + load (carries to MP joiners via applyPropDynState)
 assert(/if\(o\.userData\.onFire\)\{ e\.fire=1; if\(o\.userData\.fireDps!=null\) e\.fdps=o\.userData\.fireDps; if\(o\.userData\.fireFuse!=null\) e\.ffuse=o\.userData\.fireFuse; \}/.test(src), 'burning state serialized with the prop');
@@ -20,7 +20,7 @@ const ig = extractFunction('igniteProp');
 assert(/o\.userData\._fireIgnited=true/.test(ig), 'igniteProp marks the prop lit');
 assert(/o\.userData\.explosive && \(\+o\.userData\.fireFuse\|\|0\)>0 && o\.userData\._fireFuseT==null\) o\.userData\._fireFuseT=\+o\.userData\.fireFuse/.test(ig), 'a fused explosive arms its fuse on ignition');
 const dp = extractFunction('damageProp');
-assert(/obj\.userData\.explosive && \(\+obj\.userData\.fireFuse\|\|0\)>0 && !obj\.userData\._fireIgnited && obj\.userData\.hp>0 && typeof igniteProp==='function'\) igniteProp\(obj\)/.test(dp), 'shooting a fused explosive (without destroying it) lights it');
+assert(/obj\.userData\.explosive && \(\+obj\.userData\.fireFuse\|\|0\)>0 && !obj\.userData\._fireIgnited && obj\.userData\.hp>0 && typeof igniteProp==='function'\)\{\s*igniteProp\(obj\);[\s\S]*?return false;\s*\}\s*obj\.userData\.hp -= dmg;/.test(dp), 'shooting a fused explosive LIGHTS it and it survives (the fuse becomes the timer) instead of taking the killing damage');
 const rd = extractFunction('resetDynamicProps');
 assert(/resetPropFires\(\)/.test(rd), 'authored fires re-light on each deploy');
 const sp = extractFunction('shatterProp');

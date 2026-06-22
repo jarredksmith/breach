@@ -14271,7 +14271,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 628 · 2026-06-22';
+const BUILD_VERSION = 'build 629 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15183,8 +15183,16 @@ function shatterProp(obj, point, dir, power, byId){
 function damageProp(obj, dmg, point, dir, power, byId){
   if(!obj.userData.phys || obj.userData.breakable===false) return false;
   if(obj.userData.hp==null) obj.userData.hp = defaultHpFor(obj);
+  // build 629: a fused explosive that isn't lit yet — the FIRST shot LIGHTS it (then it blows on its own fuse)
+  // instead of taking the killing damage, so "shoot the barrel, watch it catch, and run" works even when the shot
+  // would otherwise have destroyed it outright. Once lit, further shots fall through below and can pop it early.
+  if(obj.userData.explosive && (+obj.userData.fireFuse||0)>0 && !obj.userData._fireIgnited && obj.userData.hp>0 && typeof igniteProp==='function'){
+    igniteProp(obj);
+    obj.traverse(o=>{ if(o.isMesh && o.material && o.material.emissive){ o.material.emissive.setHex(0x661a00); o.material.emissiveIntensity = Math.max(o.material.emissiveIntensity||0, 0.8); } });
+    obj.userData._flash = performance.now();
+    return false;
+  }
   obj.userData.hp -= dmg;
-  if(obj.userData.explosive && (+obj.userData.fireFuse||0)>0 && !obj.userData._fireIgnited && obj.userData.hp>0 && typeof igniteProp==='function') igniteProp(obj);   // a fused explosive lights when shot, then blows on its fuse
   // brief impact flash on the prop
   obj.traverse(o=>{ if(o.isMesh && o.material && o.material.emissive){ o.material.emissive.setHex(0x661a00); o.material.emissiveIntensity = Math.max(o.material.emissiveIntensity||0, 0.8); } });
   obj.userData._flash = performance.now();
@@ -20518,7 +20526,7 @@ function renderEditorFields(){
           // On fire: the prop burns (flames + contact damage); an explosive one can burn, then detonate after a fuse
           const fr=document.createElement('label'); fr.style.cssText='display:flex;align-items:center;gap:7px;color:#ffb38a;font-size:12px;margin-top:8px;cursor:pointer;';
           const frcb=document.createElement('input'); frcb.type='checkbox'; frcb.checked=!!sel.userData.onFire; frcb.style.accentColor='#ff6b3a';
-          frcb.onchange=()=>{ pushUndoSnapshot(); sel.userData.onFire=frcb.checked; if(frcb.checked){ if(sel.userData.fireDps==null) sel.userData.fireDps=12; if(sel.userData.explosive && sel.userData.fireFuse==null) sel.userData.fireFuse=3; } renderEditorFields(); };
+          frcb.onchange=()=>{ pushUndoSnapshot(); sel.userData.onFire=frcb.checked; if(frcb.checked && sel.userData.fireDps==null) sel.userData.fireDps=12; renderEditorFields(); };
           const frsp=document.createElement('span'); frsp.innerHTML='<b>\ud83d\udd25 On fire</b> \u2014 burns with flames + hurts anyone who touches it';
           fr.appendChild(frcb); fr.appendChild(frsp); pdBody.appendChild(fr);
           if(sel.userData.onFire){
@@ -20531,12 +20539,7 @@ function renderEditorFields(){
               l.appendChild(sp); l.appendChild(r); l.appendChild(v); pdBody.appendChild(l);
             };
             mkF('Burn dmg',0,60,1,(sel.userData.fireDps!=null?sel.userData.fireDps:12),(m)=>m+'/s',(m)=>sel.userData.fireDps=m);
-            if(sel.userData.explosive){
-              mkF('Fuse',0,15,0.5,(sel.userData.fireFuse!=null?sel.userData.fireFuse:3),(m)=>m>0?(m+'s'):'never',(m)=>sel.userData.fireFuse=m);
-              const fn=document.createElement('div'); fn.className='hint'; fn.style.marginTop='3px'; fn.textContent='A burning explosive blows up after the fuse (0 = just burns). Shooting an explosive that has a fuse also lights it \u2014 so you can shoot a barrel, watch it catch fire, then run before it goes.'; pdBody.appendChild(fn);
-            } else {
-              const fn=document.createElement('div'); fn.className='hint'; fn.style.marginTop='3px'; fn.textContent='Burns continuously, dealing contact damage to anyone near it. Turn on Explosive too for a barrel that burns and then blows.'; pdBody.appendChild(fn);
-            }
+            const fn=document.createElement('div'); fn.className='hint'; fn.style.marginTop='3px'; fn.textContent = sel.userData.explosive ? 'Lit from the moment the level loads, dealing contact damage. For a barrel you SHOOT to light, leave this OFF and set a Fuse under \u{1F4A5} Explosive below.' : 'Lit from the start, dealing contact damage to anyone near it. Turn on Explosive too for a barrel that burns and then blows.'; pdBody.appendChild(fn);
           }
 
           // Destructible: take damage from shots and shatter into debris at 0 HP
@@ -20571,7 +20574,11 @@ function renderEditorFields(){
               mkSlider('Radius',2,20,0.5,(sel.userData.blastRadius!=null?sel.userData.blastRadius:7),(m)=>m+'m',(m)=>sel.userData.blastRadius=m);
               mkSlider('Damage',10,200,5,(sel.userData.blastDmg!=null?sel.userData.blastDmg:70),(m)=>String(Math.round(m)),(m)=>sel.userData.blastDmg=m);
               mkSlider('Impact',0,30,1,(sel.userData.impactVel!=null?sel.userData.impactVel:10),(m)=>m>0?(m+' m/s'):'off',(m)=>sel.userData.impactVel=m);
-              const exn=document.createElement('div'); exn.className='hint'; exn.style.marginTop='3px'; exn.textContent='Shoot it, or slam it into something above the Impact speed, to blow it (Impact 0 = shoot-only): flipbook blast + falloff damage to everyone in range (you too). Chain-reacts nearby explosives.';
+              // build 629: the Fuse lives with Explosive now (not gated behind On-fire). Fuse 0 = blows the instant
+              // it's destroyed; Fuse > 0 = a shot LIGHTS it (catches fire) and it blows after the delay — and it
+              // is NOT pre-lit at load, so "shoot the barrel, watch it smoke, and run" finally works as authored.
+              mkSlider('Fuse',0,15,0.5,(sel.userData.fireFuse!=null?sel.userData.fireFuse:0),(m)=>m>0?(m+'s'):'instant',(m)=>sel.userData.fireFuse=m);
+              const exn=document.createElement('div'); exn.className='hint'; exn.style.marginTop='3px'; exn.textContent='Shoot it, or slam it into something above the Impact speed, to blow it (Impact 0 = shoot-only). Fuse 0 = blows instantly when destroyed; Fuse > 0 = a shot LIGHTS it, then it blows after the fuse (shoot it, watch it catch, run). Flipbook blast + falloff damage to everyone in range (you too). Chain-reacts nearby explosives.';
               pdBody.appendChild(exn);
             }
             const hlab=document.createElement('label'); hlab.style.cssText='display:flex;align-items:center;gap:7px;color:#9fe6cf;font-size:12px;margin-top:6px;';
