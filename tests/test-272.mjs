@@ -1,0 +1,22 @@
+import { gameSource, assert, done } from './harness.mjs';
+import { readFileSync } from 'fs';
+const src = gameSource();
+const page = readFileSync(new URL('../breach.html', import.meta.url), 'utf8');
+// build 377: crouch and slide are on separate keys. Ctrl = crouch (hold), C = slide (tap while sprinting).
+// They used to share Ctrl||C, so either key did both and they fought.
+
+// crouch reads Ctrl (+ gamepad), NOT C
+assert(/_crouchMode==='toggle'\) \? _crouchToggled : \(keys\['ControlLeft'\]\|\|keys\['ControlRight'\]\)\) \|\| padCrouch;/.test(src), 'crouch resolves from Ctrl hold OR Ctrl-tap toggle (or gamepad), not C (build 527)');
+assert(!/let _wantCrouch = \([^;]*KeyC/.test(src), 'C no longer triggers crouch');
+
+// slide reads C (+ gamepad), NOT Ctrl
+assert(/const _slideKey = \(keys\['KeyC'\]\|\|padCrouch\);/.test(src), 'slide is C (or gamepad), not Ctrl');
+assert(!/const _slideKey = \([^;]*ControlLeft/.test(src), 'Ctrl no longer triggers slide');
+
+// slide is still an edge (tap), still gated on sprint + grounded + moving
+assert(/const _slideEdge = _slideKey && !_prevSlideKey; _prevSlideKey = _slideKey;/.test(src), 'slide is edge-detected off the C key');
+assert(/if\(!sliding && slideCD<=0 && _slideEdge && _sprinting && player\.onGround && wish\.lengthSq\(\)>0\.01/.test(src), 'slide still requires sprint + grounded + moving');
+
+// the on-screen legend reflects the split
+assert(/<b>CTRL<\/b> crouch/.test(page) && /<b>SPRINT\+C<\/b> slide/.test(page), 'controls legend shows Ctrl crouch + Sprint+C slide');
+done();
