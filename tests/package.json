@@ -1,0 +1,10 @@
+{
+  "name": "breach-tests",
+  "type": "module",
+  "private": true,
+  "scripts": { "test": "node run-all.mjs" },
+  "dependencies": {
+    "three": "0.149.0",
+    "@dimforge/rapier3d-compat": "0.19.3"
+  }
+}

@@ -1,0 +1,32 @@
+// (build 116) Map powerups: host/solo-owned pickup pads (health/damage/speed/shield) that grant a buff
+// on proximity and respawn after a cooldown. Mirrors coins; clients see them via the world snapshot.
+import { gameSource, extractFunction, done, assert } from './harness.mjs';
+const src = gameSource();
+
+assert(/const POWERUP_KINDS = \{/.test(src) && /health:/.test(src) && /damage:/.test(src) && /speed:/.test(src) && /shield:/.test(src), 'four powerup kinds');
+assert(/const POWERUP_COOLDOWN = 15;/.test(src), 'respawn cooldown');
+assert(/function buildPowerupMesh/.test(src) && /function powerupLayout/.test(src), 'mesh + layout');
+
+const up = extractFunction('updatePowerups');
+assert(/const players = allPlayers\(\);/.test(up), 'checks all players (host + remotes)');
+assert(/if\(!p\.ready\)\{ p\.cd -= dt; if\(p\.cd<=0\)\{ p\.ready=true;/.test(up), 'cooldown then respawn');
+assert(/if\(near && nd < 2\.0 && !\(p\.interact && near\.id===NET\.myId\)\)\{ grantPowerup\(near, p\.kind, p\.item\); p\.ready=false; p\.cd=\(\(POWERUP_KINDS\[p\.kind\]&&POWERUP_KINDS\[p\.kind\]\.key\)\|\|p\.kind==='item'\)\?1e9:POWERUP_COOLDOWN;/.test(up), 'grant on proximity + start cooldown (keys/items one-shot)');
+
+const gp = extractFunction('grantPowerup');
+assert(/playerEntry\.id===NET\.myId\) applyPowerupLocal\(kind, item\)/.test(gp) && /sendToPlayer\(playerEntry\.id, \{ t:'power', k:kind, item:item \}\)/.test(gp), 'local apply vs remote grant');
+
+const ap = extractFunction('applyPowerupLocal');
+assert(/player\.hp = Math\.min\(player\.maxHp, player\.hp \+ 50\)/.test(ap), 'health heals +50');
+assert(/applyDamage\(\)/.test(ap) && /applySpeed\(\)/.test(ap) && /applyShield\(\)/.test(ap), 'buffs routed to existing applies');
+
+// sync
+assert(/const PU = powerups\.length \? powerups\.map/.test(src), 'powerups serialized in snapshot');
+assert(/return \{ t:'world', P, E, C, D, K, PU, O, wv:wave \};/.test(src), 'PU in world packet');
+assert(/m=buildPowerupMesh\(pu\.k\); m\.position\.set\(pu\.p\[0\],0,pu\.p\[1\]\)/.test(src), 'client builds pad meshes');
+assert(/else if\(msg\.t==='power'\)\{ applyPowerupLocal\(msg\.k, msg\.item\); \}/.test(src), 'client applies a granted powerup');
+
+// lifecycle
+assert(/if\(!isClient && !editorOpen\) updatePowerups\(dt\);/.test(src), 'host/solo ticks powerups in all combat modes');
+assert(/if\(typeof spawnPowerups==='function'\) spawnPowerups\(\);/.test(src), 'powerups spawned on run start');
+assert(/if\(NET\.mode==='client'\) return;/.test(extractFunction('spawnPowerups')), 'clients do not self-spawn pads');
+done('map powerups');
