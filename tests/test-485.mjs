@@ -21,17 +21,17 @@ const deps = `
   const THREE={ PointLight:PL };
   const _blastLightPool=[]; let _blastLightN=0;
 `;
-const api = new Function(deps + '\n' + extractFunction('_blastLightAt') + '\n return { at:_blastLightAt, pool:()=>_blastLightPool, added:()=>added };')();
+const api = new Function(deps + '\n' + extractFunction('_ensureBlastLights') + '\n' + extractFunction('_blastLightAt') + '\n return { at:_blastLightAt, ensure:_ensureBlastLights, pool:()=>_blastLightPool, added:()=>added };')();
 
 const L1 = api.at({x:1,y:2,z:3}, 5);
-eq(api.pool().length, 6, 'first blast creates the whole pool at once');
-eq(api.added(), 6, 'all 6 lights are added to the scene together (count fixed up front)');
+eq(api.pool().length, 4, 'first blast lazily ensures the whole pool at once');
+eq(api.added(), 4, 'all 4 lights are added to the scene together (count fixed up front)');
 eq(L1.intensity, 30, 'the blast light is lit');
 eq(L1.distance, Math.max(12, 5*2.5), 'distance scales with the blast radius');
 
 for(let i=0;i<10;i++) api.at({x:0,y:0,z:0}, 8);   // ten more blasts
-eq(api.pool().length, 6, 'later blasts reuse the pool — light count never grows');
-eq(api.added(), 6, 'no further scene.add (so no shader recompile)');
+eq(api.pool().length, 4, 'later blasts reuse the pool — light count never grows');
+eq(api.added(), 4, 'no further scene.add (so no shader recompile)');
 const L2 = api.at({x:0,y:0,z:0}, 20);
 eq(L2.distance, Math.max(12, 20*2.5), 'a reused light re-takes the new blast radius (a uniform change, no recompile)');
 

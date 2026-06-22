@@ -13298,7 +13298,7 @@ function loadVfxTexture(kind){
     undefined,
     ()=>{ console.warn('[VFX] no '+kind+' sheet at '+cfg.url+' — using the built-in procedural one'); });   // keep the procedural sheet
 }
-function preloadVfx(){ for(const k in VFX) loadVfxTexture(k); }
+function preloadVfx(){ for(const k in VFX) loadVfxTexture(k); _ensureBlastLights(); _ensureMuzzleLights(); warmFlipbookShaders(); }   // build 636: seat the pooled lights + warm all combat shaders at LOAD (behind the loading screen), so the first explosion can't trigger a multi-second recompile freeze
 // build 622: the first rocket/explosion used to FREEZE the frame. The texture was pre-uploaded, but the Sprite
 // shader PROGRAM that draws a flipbook is only compiled/linked by the GPU the first time such a sprite is
 // actually rendered — and the load-time renderer.compile() pass runs before any flipbook sprite exists in the
@@ -13313,6 +13313,12 @@ function warmFlipbookShaders(){
   let tex=null; for(const k in _vfxTex){ const e=_vfxTex[k]; if(e && e.tex){ tex=e.tex; break; } }
   if(!tex) return;   // no VFX texture ready yet — warm on a later sheet's onLoad
   _vfxWarmed = true;
+  // build 636: seat the pooled blast + muzzle lights NOW, so this compile bakes every lit material for the FINAL
+  // point-light count. An explosion (or muzzle flash) then only re-aims an existing light — it never changes the
+  // count, so it never triggers three.js to recompile every material. That recompile, on the first blast, was the
+  // 3–5s full-screen freeze. (Enemies that spawn later compile once for this same count — explosions stay smooth.)
+  if(typeof _ensureBlastLights==='function') _ensureBlastLights();
+  if(typeof _ensureMuzzleLights==='function') _ensureMuzzleLights();
   const made=[];
   const drop=(parent, blend, depthTest)=>{
     const mat=new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, depthTest, opacity:0, blending:blend });
@@ -13321,6 +13327,9 @@ function warmFlipbookShaders(){
   };
   drop(scene, THREE.AdditiveBlending, true); drop(scene, THREE.NormalBlending, true);   // world explosions/smoke
   if(typeof vmScene!=='undefined') drop(vmScene, THREE.AdditiveBlending, true);          // viewmodel muzzle flash
+  // build 636: also warm the debris PBR shader (both shading variants) so the FIRST shatter doesn't compile a
+  // MeshStandardMaterial mid-combat
+  try{ for(const _flat of [true,false]){ const dm=new THREE.Mesh(debrisGeo(_flat?'shards':'cubes'), new THREE.MeshStandardMaterial({ color:0x888888, roughness:.8, metalness:.15, flatShading:_flat, transparent:true, opacity:0 })); dm.position.set(0,-99999,0); dm.scale.setScalar(0.01); scene.add(dm); made.push(dm); } }catch(e){}
   try{ renderer.compile(scene, (typeof camera!=='undefined'?camera:null)); }catch(e){}
   try{ if(typeof vmScene!=='undefined' && typeof vmCam!=='undefined') renderer.compile(vmScene, vmCam); }catch(e){}
   for(const sp of made){ sp.removeFromParent(); sp.material.dispose(); }
@@ -13403,8 +13412,9 @@ const explosions = [];
 // every explosion (the rocket/explosion stutter). Instead keep a small pool of blast lights permanently in the
 // scene (created together once, so the count then never changes) and just re-aim + re-brighten one per blast.
 const _blastLightPool = []; let _blastLightN = 0;
+function _ensureBlastLights(){ if(_blastLightPool.length || typeof scene==='undefined') return; for(let i=0;i<4;i++){ const L=new THREE.PointLight(0xffaa44, 0, 12); scene.add(L); _blastLightPool.push(L); } }   // build 636: created EAGERLY at load (see warmCombatShaders) so the scene's point-light count is fixed before any material compiles — a blast never changes the count, so it never triggers a recompile
 function _blastLightAt(pos, R){
-  if(!_blastLightPool.length){ for(let i=0;i<6;i++){ const L=new THREE.PointLight(0xffaa44, 0, 12); scene.add(L); _blastLightPool.push(L); } }   // one-time: fix the scene's point-light count up front
+  _ensureBlastLights();
   const L = _blastLightPool[_blastLightN++ % _blastLightPool.length];
   L.position.copy(pos); L.distance = Math.max(12, R*2.5); L.intensity = 30;   // position/distance/intensity are uniforms — changing them never recompiles
   return L;
@@ -14189,8 +14199,9 @@ const tracers = [];
 // (and their avatar plays its attack clip). Host relays client shots to the other clients (star topology).
 const _muzFlashes = [];
 const _muzLightPool = []; let _muzLightN = 0;
+function _ensureMuzzleLights(){ if(typeof scene==='undefined') return; while(_muzLightPool.length < 4){ const L=new THREE.PointLight(0xffcf6b, 0, 7); scene.add(L); _muzLightPool.push(L); } }   // build 636: pre-create the muzzle-flash light pool so the scene's light count is fixed up front (no recompile on the first few shots either)
 function flashLightAt(pos){   // brief point-light glow (no solid primitive), reusing a small pool
-  if(_muzLightPool.length < 4){ const L=new THREE.PointLight(0xffcf6b, 0, 7); scene.add(L); _muzLightPool.push(L); }
+  _ensureMuzzleLights();
   const L = _muzLightPool[_muzLightN++ % _muzLightPool.length];
   L.position.copy(pos); L.intensity = 8;
   _muzFlashes.push({ light:L, life:0.08 });
@@ -14378,7 +14389,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 635 · 2026-06-22';
+const BUILD_VERSION = 'build 636 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
