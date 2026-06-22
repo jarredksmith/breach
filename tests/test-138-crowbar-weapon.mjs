@@ -4,7 +4,7 @@
 import { gameSource, extractFunction, done, assert } from './harness.mjs';
 const src = gameSource();
 
-assert(/crowbar: \{ name:'CROWBAR'.*melee:true, reach:3\.4 \}/.test(src), 'crowbar weapon defined (melee, reach 3.4)');
+assert(/crowbar: \{ name:'CROWBAR'.*melee:true, reach:3\.4, loud:0 \}/.test(src), 'crowbar weapon defined (melee, reach 3.4)');
 
 const sh = extractFunction('shoot');
 assert(/if\(w\.melee\)\{ if\(!w\.auto && firingLatch\) return; firingLatch=true; lastShot=now; triggerGunAnim\('shoot'\); meleeAttack\(w\); return; \}/.test(sh), 'firing a melee weapon swings it (before the ammo path)');
