@@ -12518,7 +12518,7 @@ function netHostLost(){
 function setRemoteState(id, msg){
   const rp=ensureRemotePlayer(id, msg.n);
   rp.posEye.set(msg.p[0], msg.p[1], msg.p[2]);
-  rp.target.set(msg.p[0], Math.max(0, msg.p[1]-EYE), msg.p[2]);   // feet on floor
+  rp.target.set(msg.p[0], msg.p[1]-EYE, msg.p[2]);   // synced feet (no flat-0 clamp; netInterpolate glues grounded avatars to the LOCAL terrain)
   rp.yaw = msg.y; rp.pitch = msg.pi||0; if(msg.hp!=null) rp.hp=msg.hp; if(msg.w!=null) rp.wep=msg.w; if(msg.g) rp.grip=_unpackGrip(msg.g); rp.air = !!msg.j; rp.slide = !!msg.sl; rp.ads = !!msg.ad; rp.crouch = !!msg.cr; rp.hd = msg.hd||0; rp.hs = msg.hs||0; rp.mt = (msg.mt!=null?msg.mt:-1);   // build 548: which turret this player is manning (-1 = none)
 }
 
@@ -12665,7 +12665,7 @@ function applyWorld(msg){
   const seen=new Set();
   for(const pl of msg.P){ if(pl.id===NET.myId) continue; seen.add(pl.id);
     const rp=ensureRemotePlayer(pl.id, pl.n);
-    rp.posEye.set(pl.p[0],pl.p[1],pl.p[2]); rp.target.set(pl.p[0], Math.max(0,pl.p[1]-EYE), pl.p[2]); rp.yaw=pl.y; rp.pitch=pl.pi||0; rp.hp=pl.hp; rp.wep=pl.w; if(pl.g) rp.grip=_unpackGrip(pl.g); rp.air=!!pl.j; rp.slide=!!pl.sl; rp.ads=!!pl.ad; rp.crouch=!!pl.cr; rp.hd=pl.hd||0; rp.hs=pl.hs||0; rp.mt=(pl.mt!=null?pl.mt:-1); }   // build 548: mounted-turret index travels in the snapshot
+    rp.posEye.set(pl.p[0],pl.p[1],pl.p[2]); rp.target.set(pl.p[0], pl.p[1]-EYE, pl.p[2]); rp.yaw=pl.y; rp.pitch=pl.pi||0; rp.hp=pl.hp; rp.wep=pl.w; if(pl.g) rp.grip=_unpackGrip(pl.g); rp.air=!!pl.j; rp.slide=!!pl.sl; rp.ads=!!pl.ad; rp.crouch=!!pl.cr; rp.hd=pl.hd||0; rp.hs=pl.hs||0; rp.mt=(pl.mt!=null?pl.mt:-1); }   // build 548: mounted-turret index travels in the snapshot
   for(const id in NET.players){ if(!seen.has(+id)) removeRemotePlayer(+id); }
   const es=new Set();
   for(const e of msg.E){ es.add(e.id); upsertEnemyMesh(e); }
@@ -12705,6 +12705,14 @@ function netInterpolate(dt){
   for(const id in NET.players){ const rp=NET.players[id];
     const _px=rp.mesh.position.x, _pz=rp.mesh.position.z;
     rp.mesh.position.lerp(rp.target, k);
+    // build 639: glue a GROUNDED remote avatar to the LOCAL ground (terrain + walkable surfaces / prop tops) at its
+    // interpolated (x,z) — exactly how bots stand — instead of trusting the raw synced feet, which floated avatars
+    // over hills/valleys (the sender's terrain Y didn't line up with the floor under them here, and the old feet
+    // were clamped flat at 0). While airborne (rp.air), keep the synced feet so jumps/falls still arc correctly.
+    if(!rp.air && typeof groundHeightAt==='function'){
+      const _gy = groundHeightAt(rp.mesh.position.x, rp.mesh.position.z, rp.target.y);
+      if(isFinite(_gy)) rp.mesh.position.y = _gy;
+    }
     if(rp.mesh.userData.hasModel || rp.mesh.userData.visual) attachAvatarGun(rp.mesh, rp.wep||'rifle', rp.grip||null);   // remote players hold their synced weapon
     let dy=rp.yaw-rp.mesh.rotation.y; while(dy>Math.PI)dy-=2*Math.PI; while(dy<-Math.PI)dy+=2*Math.PI;
     rp.mesh.rotation.y += dy*k;
@@ -14411,7 +14419,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 638 · 2026-06-22';
+const BUILD_VERSION = 'build 639 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
