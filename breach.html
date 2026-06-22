@@ -13199,14 +13199,95 @@ const VFX = {
 };
 const _vfxTex = {};         // kind -> {tex} | 'loading' | 'fail'
 const _flipbooks = [];
+const _vfxPng = {};         // build 631: kinds whose hosted-PNG override we've already attempted
+// build 631: BREACH ships as ONE file, but the flipbook VFX expected external vfx/*.png sheets — when those 404
+// (a fresh host / this repo) explosions fell back to a single cheesy gradient sphere (and that fallback allocated
+// a sphere geometry per blast — a stutter). We now BAKE animated sprite sheets procedurally at load (a canvas ->
+// one shared CanvasTexture per kind), so explosions/smoke/muzzle always play as real animated sprites with no
+// external dependency and no per-blast geometry. A hosted vfx/*.png, if present, still overrides the procedural one.
+function _fireColAt(h){   // crude flame temperature ramp, hot(1) -> cool(0)
+  if(h>0.82) return [255,252,232];
+  if(h>0.58) return [255,226,150];
+  if(h>0.38) return [255,150,52];
+  if(h>0.20) return [222,82,26];
+  return [120,34,14];
+}
+function _drawExplosionFrame(cx, cell, p, rnd){
+  const R=cell*0.5, env = p<0.10 ? p/0.10 : 1-Math.pow((p-0.10)/0.90, 1.5);   // quick flash, long burn-down
+  if(env<=0) return;
+  const grow=0.20+p*0.80;
+  cx.globalCompositeOperation='lighter';   // overlapping lobes brighten -> a hot core, like additive fire
+  for(let i=0;i<12;i++){
+    const a=rnd()*Math.PI*2, rr=Math.pow(rnd(),0.6)*R*grow*0.82;
+    const x=Math.cos(a)*rr, y=Math.sin(a)*rr, lr=R*grow*(0.26+rnd()*0.34);
+    const heat=Math.max(0, 1 - (rr/(R*grow+1e-3))*0.85 - p*0.55);   // hotter near the centre + earlier
+    const c=_fireColAt(heat), aMul=env*(0.45+rnd()*0.55);
+    const g=cx.createRadialGradient(x,y,0,x,y,lr);
+    g.addColorStop(0,'rgba('+c[0]+','+c[1]+','+c[2]+','+(0.92*aMul)+')');
+    g.addColorStop(0.5,'rgba('+c[0]+','+Math.round(c[1]*0.65)+','+Math.round(c[2]*0.45)+','+(0.42*aMul)+')');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,lr,0,Math.PI*2); cx.fill();
+  }
+  cx.globalCompositeOperation='source-over';
+}
+function _drawSmokeFrame(cx, cell, p, rnd){
+  const R=cell*0.5, env = p<0.14 ? p/0.14 : 1-(p-0.14)/0.86;
+  if(env<=0) return;
+  const grow=0.30+p*0.70;
+  for(let i=0;i<11;i++){   // billowing grey lobes that rise + darken as they age (normal-blended -> occluding plume)
+    const a=rnd()*Math.PI*2, rr=Math.pow(rnd(),0.6)*R*grow*0.8;
+    const x=Math.cos(a)*rr, y=Math.sin(a)*rr - p*R*0.25, lr=R*grow*(0.30+rnd()*0.32);
+    const sh=Math.max(12, Math.round((46+rnd()*44) - p*28)), aMul=env*(0.22+rnd()*0.26);
+    const g=cx.createRadialGradient(x,y,0,x,y,lr);
+    g.addColorStop(0,'rgba('+sh+','+sh+','+(sh+4)+','+aMul+')');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g; cx.beginPath(); cx.arc(x,y,lr,0,Math.PI*2); cx.fill();
+  }
+}
+function _drawMuzzleFrame(cx, cell, p, rnd){
+  const R=cell*0.5, env=Math.pow(1-p,1.3);
+  if(env<=0) return;
+  cx.globalCompositeOperation='lighter';
+  const g=cx.createRadialGradient(0,0,0,0,0,R*(0.55*env+0.12));
+  g.addColorStop(0,'rgba(255,250,224,'+(0.95*env)+')');
+  g.addColorStop(0.45,'rgba(255,198,92,'+(0.5*env)+')');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  cx.fillStyle=g; cx.beginPath(); cx.arc(0,0,R,0,Math.PI*2); cx.fill();
+  cx.strokeStyle='rgba(255,222,150,'+(0.7*env)+')'; cx.lineWidth=Math.max(1,R*0.06); cx.lineCap='round';
+  for(let i=0;i<6;i++){ const a=(i/6)*Math.PI*2 + rnd()*0.3, ln=R*(0.45+rnd()*0.55)*env; cx.beginPath(); cx.moveTo(0,0); cx.lineTo(Math.cos(a)*ln, Math.sin(a)*ln); cx.stroke(); }
+  cx.globalCompositeOperation='source-over';
+}
+function _procVfxSheet(kind){
+  const cfg=VFX[kind]; if(!cfg) return null;
+  if(typeof document==='undefined' || typeof THREE==='undefined') return null;
+  const cell=128, cv=document.createElement('canvas'); cv.width=cfg.cols*cell; cv.height=cfg.rows*cell;
+  const cx=cv.getContext('2d'); if(!cx) return null;
+  let seed=(0x9e3779b9 ^ (kind.length*2654435761)) >>> 0;
+  const rnd=()=>{ seed=(seed*1664525+1013904223)>>>0; return seed/4294967296; };   // deterministic so a kind bakes the same sheet every time
+  const draw = kind==='smoke' ? _drawSmokeFrame : (kind==='muzzle' ? _drawMuzzleFrame : _drawExplosionFrame);
+  for(let f=0; f<cfg.frames; f++){
+    const col=f%cfg.cols, row=(f/cfg.cols)|0, ox=col*cell, oy=row*cell;
+    const p=cfg.frames>1 ? f/(cfg.frames-1) : 0;
+    cx.save(); cx.beginPath(); cx.rect(ox,oy,cell,cell); cx.clip(); cx.translate(ox+cell/2, oy+cell/2);
+    try{ draw(cx, cell, p, rnd); }catch(e){}
+    cx.restore();
+  }
+  const tex=new THREE.CanvasTexture(cv);
+  tex.minFilter=THREE.LinearFilter; tex.magFilter=THREE.LinearFilter; tex.wrapS=tex.wrapT=THREE.ClampToEdgeWrapping;
+  if('colorSpace' in tex) tex.colorSpace=THREE.SRGBColorSpace; tex.generateMipmaps=false; tex.repeat.set(1/cfg.cols, 1/cfg.rows);
+  try{ if(typeof renderer!=='undefined' && renderer && renderer.initTexture) renderer.initTexture(tex); }catch(e){}
+  return tex;
+}
+function _seedProcVfx(kind){ if(_vfxTex[kind] && _vfxTex[kind].tex) return; try{ const tex=_procVfxSheet(kind); if(tex) _vfxTex[kind]={tex, proc:true}; }catch(e){} }
 function loadVfxTexture(kind){
-  const cfg = VFX[kind]; if(!cfg || !cfg.url) return;
-  if(_vfxTex[kind]) return;   // loaded, loading, or failed already
-  _vfxTex[kind]='loading';
+  const cfg = VFX[kind]; if(!cfg) return;
+  if(!(_vfxTex[kind] && _vfxTex[kind].tex)) _seedProcVfx(kind);   // build 631: always have an animated sheet ready immediately (no gradient-ball fallback, ever)
+  if(!cfg.url || _vfxPng[kind]) return;                          // no hosted override to try (or already tried)
+  _vfxPng[kind]=1;
   new THREE.TextureLoader().load(cfg.url,
-    (t)=>{ t.minFilter=THREE.LinearFilter; t.magFilter=THREE.LinearFilter; t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping; if('colorSpace' in t) t.colorSpace=THREE.SRGBColorSpace; t.generateMipmaps=false; t.repeat.set(1/cfg.cols, 1/cfg.rows); try{ if(typeof renderer!=='undefined' && renderer && renderer.initTexture) renderer.initTexture(t); }catch(e){} _vfxTex[kind]={tex:t}; console.info('[VFX] loaded '+kind+' ✓ '+cfg.url); warmFlipbookShaders(); },
+    (t)=>{ t.minFilter=THREE.LinearFilter; t.magFilter=THREE.LinearFilter; t.wrapS=t.wrapT=THREE.ClampToEdgeWrapping; if('colorSpace' in t) t.colorSpace=THREE.SRGBColorSpace; t.generateMipmaps=false; t.repeat.set(1/cfg.cols, 1/cfg.rows); try{ if(typeof renderer!=='undefined' && renderer && renderer.initTexture) renderer.initTexture(t); }catch(e){} const _old=_vfxTex[kind]; _vfxTex[kind]={tex:t}; console.info('[VFX] loaded '+kind+' ✓ '+cfg.url); warmFlipbookShaders(); if(_old && _old.proc && _old.tex && _old.tex.dispose) _old.tex.dispose(); },
     undefined,
-    ()=>{ _vfxTex[kind]='fail'; console.warn('[VFX] missing '+kind+' (using procedural fallback): '+cfg.url); });
+    ()=>{ console.warn('[VFX] no '+kind+' sheet at '+cfg.url+' — using the built-in procedural one'); });   // keep the procedural sheet
 }
 function preloadVfx(){ for(const k in VFX) loadVfxTexture(k); }
 // build 622: the first rocket/explosion used to FREEZE the frame. The texture was pre-uploaded, but the Sprite
@@ -13239,8 +13320,9 @@ function warmFlipbookShaders(){
 // procedural fallback), false if not (texture missing or still loading on the very first use).
 function playFlipbook(kind, pos, scale, parent, durMul){
   const cfg = VFX[kind]; if(!cfg) return false;
-  const entry = _vfxTex[kind];
-  if(!entry || entry==='loading' || entry==='fail' || !entry.tex){ if(!entry) loadVfxTexture(kind); return false; }
+  let entry = _vfxTex[kind];
+  if(!entry || !entry.tex){ loadVfxTexture(kind); entry = _vfxTex[kind]; }   // build 631: seeds a procedural sheet synchronously, so a real animated flipbook ALWAYS plays (never the gradient-ball fallback)
+  if(!entry || !entry.tex) return false;
   const tex = entry.tex;   // ONE shared, already-uploaded texture per kind — no per-call clone or GPU re-upload (that was the hitch)
   const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false, opacity:1,
     blending: cfg.blend==='add' ? THREE.AdditiveBlending : THREE.NormalBlending, rotation: Math.random()*Math.PI*2 });
@@ -14276,7 +14358,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 630 · 2026-06-22';
+const BUILD_VERSION = 'build 631 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

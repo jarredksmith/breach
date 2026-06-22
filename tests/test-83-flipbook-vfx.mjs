@@ -9,11 +9,12 @@ assert(/const VFX_BASE = 'vfx\/';/.test(src), 'configurable vfx base path');
 assert(/explosion: \{ url:VFX_BASE\+'explosion\.png'/.test(src) && /smoke:/.test(src) && /fire:/.test(src) && /muzzle:/.test(src), 'four effect configs');
 assert(/function loadVfxTexture/.test(src) && /function preloadVfx/.test(src), 'lazy loader + preloader');
 const lv = extractFunction('loadVfxTexture');
-assert(/_vfxTex\[kind\]='fail'/.test(lv), 'missing sheet marked failed (fallback)');
+assert(/_seedProcVfx\(kind\)/.test(lv), 'build 631: always seeds a procedural animated sheet (no missing-sheet fallback to a gradient ball)');
+assert(/using the built-in procedural one/.test(lv), 'a missing hosted PNG just keeps the procedural sheet');
 
 // flipbook player advances frames by texture offset
 const pf = extractFunction('playFlipbook');
-assert(/if\(!entry \|\| entry==='loading' \|\| entry==='fail' \|\| !entry\.tex\)\{ if\(!entry\) loadVfxTexture\(kind\); return false; \}/.test(pf), 'returns false when no sheet (caller falls back)');
+assert(/if\(!entry \|\| !entry\.tex\)\{ loadVfxTexture\(kind\); entry = _vfxTex\[kind\]; \}/.test(pf), 'build 631: seeds a procedural sheet synchronously so a flipbook always plays');
 assert(/const tex = entry\.tex;/.test(pf), 'reuses one shared sheet texture');
 assert(/blending: cfg\.blend==='add' \? THREE\.AdditiveBlending : THREE\.NormalBlending/.test(pf), 'additive vs normal blend per effect');
 const uf = extractFunction('updateFlipbooks');
