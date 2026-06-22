@@ -1,0 +1,10 @@
+import { gameSource, assert, done } from './harness.mjs';
+const src = gameSource();
+assert(/let playerPhysMode = true;/.test(src) && !/breach_player_phys/.test(src), 'physics movement is the default; the in-game toggle was removed for release (build 509)');
+assert(/function ensurePlayerKCC\(\)/.test(src) && /createCharacterController\(0\.08\)/.test(src), 'builds a Rapier character controller');
+assert(/ColliderDesc\.capsule\(hh, PLAYER_CAP_R\)/.test(src) && /const PLAYER_CAP_R = 0\.45/.test(src), 'narrow capsule so archways fit');
+assert(/enableAutostep\(STEP/.test(src) && /enableSnapToGround/.test(src) && /setMaxSlopeClimbAngle/.test(src), 'autostep + snap + slope limits configured');
+assert(/if\(playerPhysMode && !editorOpen && physWorld\)\{[\s\S]*?moveKCC\(dt\); _usedKCC=true;[\s\S]*?catch\(e\)\{[\s\S]*?_kccBroken=true; playerPhysMode=false;/.test(src), 'KCC path with try/catch fallback to classic');
+assert(/if\(!_usedKCC\)\{/.test(src) && /end classic-movement branch/.test(src), 'classic resolver still runs when KCC is off/failed');
+assert(/playerBody = playerCollider = playerCtrl = null;/.test(src), 'KCC refs cleared when the physics world is rebuilt');
+done('kcc-toggle');

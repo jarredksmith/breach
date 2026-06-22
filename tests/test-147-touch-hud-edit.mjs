@@ -1,0 +1,10 @@
+import { gameSource, assert, done } from './harness.mjs';
+const src = gameSource();
+assert(/const TOUCH_EDITABLE = \['tStick','tFire','tAim','tJump','tReload','tNade','tWeapon','tUse'\]/.test(src), 'editable touch controls listed');
+assert(/localStorage\.setItem\('breach_touch_layout'/.test(src) && /breach_touch_layout'\)\|\|'\{\}'/.test(src), 'layout persisted to localStorage');
+assert(/function applyTouchLayout\(\)/.test(src) && /o\.fx\*vw/.test(src), 'layout applied as viewport-fraction overrides');
+assert(/function enterTouchEdit\(\)/.test(src) && /function exitTouchEdit\(\)/.test(src), 'enter/exit edit mode');
+assert(/touchLayout=\{\}; _teSel=null;[\s\S]*?saveTouchLayout\(\); applyTouchLayout\(\);/.test(src), 'Reset clears the layout');
+assert(/o\.fx=r\.left\/innerWidth; o\.fy=r\.top\/innerHeight; saveTouchLayout\(\)/.test(src), 'drop commits fractional position');
+assert(/eh\.onclick=\(\)=>\{[^}]*enterTouchEdit\(\)/.test(src), 'pause menu launches the editor');
+done('touch-hud-edit');

@@ -1,0 +1,10 @@
+import { gameSource, assert, done } from './harness.mjs';
+const src = gameSource();
+assert(/const HUD_EDITABLE = \['stats','ammoPanel','minimap','score','scoreboard'\]/.test(src), 'HUD readouts (incl. the MP scoreboard, build 506) are editable');
+assert(/const ALL_EDITABLE = TOUCH_EDITABLE\.concat\(HUD_EDITABLE\)/.test(src), 'combined editable list');
+assert(/for\(const id of ALL_EDITABLE\)/.test(src), 'apply/hit-test iterate the combined list');
+assert(/function applyTouchChrome\(\)/.test(src) && /tu\.style\.opacity = touchOpacity/.test(src), 'global opacity applied to controls');
+assert(/touchHand==='left'\)\{ lk\.style\.left='0'; lk\.style\.right='42%'/.test(src), 'left-handed flips the look-drag side');
+assert(/flip\.onclick[\s\S]*?o\.fx=\(vw-r\.right\)\/vw[\s\S]*?touchHand=\(touchHand==='left'\)\?'right':'left'/.test(src), 'Flip mirrors positions + toggles hand');
+assert(/oSlider\.oninput=\(\)=>\{ touchOpacity=\+oSlider\.value/.test(src), 'opacity slider wired + persisted');
+done('touch-hud-phase3');

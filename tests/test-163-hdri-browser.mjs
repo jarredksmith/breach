@@ -1,0 +1,11 @@
+import { gameSource, assert, done } from './harness.mjs';
+const src = gameSource();
+assert(/function openHdriBrowser\(\)/.test(src), 'HDRI browser opener exists');
+assert(/const direct='https:\/\/api\.polyhaven\.com'\+path;[\s\S]*?get\(direct, \(\)=> get\(proxied\(direct\), errcb\)\)/.test(src), 'API tried direct first, proxy fallback');
+assert(/phApi\('\/assets\?t=hdris'/.test(src), 'fetches the HDRI asset list');
+assert(/phApi\('\/files\/'\+encodeURIComponent\(id\)/.test(src), 'fetches per-asset file list on pick');
+assert(/files\.hdri && files\.hdri\[r\]/.test(src) && /hd\.hdr && hd\.hdr\.url/.test(src), 'extracts the chosen-resolution .hdr url');
+assert(/res\.value='1k'/.test(src), 'resolution defaults to 1k');
+assert(/worldCfg\.sky_hdri=url; applyWorldCfg\(\)/.test(src), 'applies pick through the existing sky path');
+assert(/Browse Poly Haven HDRIs/.test(src), 'Sky panel has the browse button');
+done('hdri-browser');
