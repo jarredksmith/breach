@@ -44,7 +44,7 @@ assert(/body\.userData\.hasModel = true; body\.userData\.faceOff = mc\.face/.tes
 assert(/url !== mc\.url\) return/.test(bev), 'stale-load guard when a type url changes');
 
 // facing read per-enemy, not from a global
-assert(/turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, TURN_RATE\)/.test(src) && /en\.mesh\.userData\.faceOff\|\|0/.test(src), 'solo enemy turns smoothly toward facing (per-model faceOff applied)');
+assert(/turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, en\.shielded \? TURN_RATE\*0\.45 : TURN_RATE\)/.test(src) && /en\.mesh\.userData\.faceOff\|\|0/.test(src), 'solo enemy turns smoothly toward facing (per-model faceOff applied; Shieldbearer slower)');
 assert(/turnToward\(em\.mesh\.rotation\.y, _ey, dt, TURN_RATE\)/.test(src) && /em\.mesh\.userData\.faceOff\|\|0/.test(src), 'remote enemy turns smoothly toward facing (per-model faceOff applied)');
 
 // save + restore + net

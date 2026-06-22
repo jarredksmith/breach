@@ -19,6 +19,6 @@ assert(/if\(launched\)\{ b\._spin=\(b\._spin\|\|0\)\+\(Math\.hypot\(b\.evx\|\|0,
 assert(/else \{ b\._spin=0; b\.mesh\.rotation\.set\(0, \(b\._dispYaw=turnToward\(b\._dispYaw==null\?b\.yaw:b\._dispYaw, b\.yaw, dt, TURN_RATE\)\), 0\); \}/.test(ub), 'grounded bots turn smoothly toward target yaw');
 
 assert(/en\._spin=\(en\._spin\|\|0\)\+\(Math\.hypot\(en\.evx\|\|0,en\.evz\|\|0\)\+Math\.abs\(en\.vy\|\|0\)\)\*dt\*0\.5;/.test(src), 'launched enemies tumble');
-assert(/en\._spin=0;[\s\S]*?turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, TURN_RATE\)/.test(src), 'grounded enemies resume normal (eased) facing');
+assert(/en\._spin=0;[\s\S]*?turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, en\.shielded \? TURN_RATE\*0\.45 : TURN_RATE\)/.test(src), 'grounded enemies resume normal (eased) facing');
 
 done();

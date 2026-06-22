@@ -10,7 +10,7 @@ assert(/if\(d >  step\) d =  step;/.test(tt) && /if\(d < -step\) d = -step;/.tes
 
 // applied to bots (both tumbling + grounded) and to solo + networked enemies
 assert((src.match(/b\._dispYaw=turnToward\(/g)||[]).length===2, 'both bot rotation paths ease the displayed yaw');
-assert(/turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, TURN_RATE\)/.test(src), 'campaign enemies ease toward facing');
+assert(/turnToward\(en\.mesh\.rotation\.y, _tYaw, dt, en\.shielded \? TURN_RATE\*0\.45 : TURN_RATE\)/.test(src), 'campaign enemies ease toward facing (Shieldbearer slower)');
 assert(/turnToward\(em\.mesh\.rotation\.y, _ey, dt, TURN_RATE\)/.test(src), 'networked enemies ease toward facing');
 assert(!/\.mesh\.lookAt\(/.test(src) || !/en\.mesh\.lookAt/.test(src), 'the instant enemy lookAt snap is gone');
 

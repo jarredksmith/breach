@@ -8072,8 +8072,11 @@ const ENEMY_TYPES = {
   // build 628: Sapper — a fast, fragile rusher that doesn't swing; it DETONATES (blast + falloff) when it reaches
   // you OR when killed. Kill it from range or it takes a chunk out of you (and launches you). dmg:0 = no melee.
   sapper: { name:'Sapper', hp:20, speedMin:9.5, speedMax:12.5, scale:0.85, tint:0xff5e3a, dmg:0, exploder:true, blastR:6, blastDmg:40 },
+  // build 634: Shieldbearer — a slow bruiser that SOAKS frontal shots (flank it for full damage). It turns slowly,
+  // so a strafing player can get around its guard. Shield only stops bullets/melee, not engulfing explosions.
+  shielded: { name:'Shieldbearer', hp:60, speedMin:3, speedMax:4.5, scale:1.25, tint:0x6fb7ff, dmg:14, shielded:true },
 };
-const ENEMY_TYPE_KEYS = ['grunt','runner','brute','gunner','sapper','boss'];
+const ENEMY_TYPE_KEYS = ['grunt','runner','brute','gunner','sapper','shielded','boss'];
 // Weighted random type — later waves bias toward tougher + ranged hostiles, and mix in the odd Sapper.
 function pickEnemyType(waveNum, rng){
   rng = rng || Math.random; const r = rng();
@@ -9329,6 +9332,7 @@ function spawnEnemy(spawn){
     ranged: !!ty.ranged, standoff: ty.standoff||11, fireCd: ty.fireCd||1.5, projSpeed: ty.projSpeed||24, burst: ty.burst||1, burstGap: ty.burstGap||0.09, shootCd: 0.4 + Math.random()*0.8,
     exploder: !!ty.exploder, blastR: ty.blastR||6, blastDmg: ty.blastDmg||40,   // build 628: Sapper detonation
     strafe: !!ty.strafe,   // build 633: ranged enemy strafes while holding standoff
+    shielded: !!ty.shielded,   // build 634: soaks frontal damage, must be flanked
 
     mode: (spawn && spawn.mode) ? spawn.mode : 'hunt',
     home: spawn ? { x:px, z:pz } : null,
@@ -14370,7 +14374,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 633 · 2026-06-22';
+const BUILD_VERSION = 'build 634 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15650,7 +15654,11 @@ function shoot(){
         let node = hit.object, en = null;
         while(node && !en){ en = enemies.find(e=>e.mesh===node); node = node.parent; }
         if(en){
-          const dealt = w.dmg*dmgMul*hsMul;
+          let dealt = w.dmg*dmgMul*hsMul;
+          // build 634: a Shieldbearer soaks shots that land on its FRONT — flank it (hit its side/back) for full
+          // damage. Applied here (not in enemyHurt) so the floating damage number matches the real HP loss, and so
+          // engulfing explosions still ignore the shield.
+          if(en.shielded && en.mesh){ const _sy=en.mesh.rotation.y-(en.mesh.userData.faceOff||0); if(_reactDir(player.pos.x-en.mesh.position.x, player.pos.z-en.mesh.position.z, _sy)==='Front') dealt *= 0.18; }
           alertEnemy(en, player.pos.x, player.pos.z);   // getting shot turns the enemy's attention toward the shooter
           spark(hit.point, isHead?0xffd166:0xff6b6b);
           const _ek = enemyHurt(en, dealt, player.pos.x, player.pos.z);
@@ -17535,7 +17543,7 @@ function loop(){
         en._spin=0;
         // face the target (player when chasing, travel dir when patrolling) but TURN toward it, don't snap.
         const _tYaw = Math.atan2(fx - en.mesh.position.x, fz - en.mesh.position.z) + (en.mesh.userData.hasModel ? (en.mesh.userData.faceOff||0) : 0);
-        en.mesh.rotation.set(0, turnToward(en.mesh.rotation.y, _tYaw, dt, TURN_RATE), 0);
+        en.mesh.rotation.set(0, turnToward(en.mesh.rotation.y, _tYaw, dt, en.shielded ? TURN_RATE*0.45 : TURN_RATE), 0);   // build 634: a Shieldbearer turns slowly so a strafing player can flank its guard
       }
       en.cooldown -= dt;
       if(en.exploder){

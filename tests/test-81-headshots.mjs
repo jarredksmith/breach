@@ -24,7 +24,7 @@ assert(/const isHead = !!\(hit\.object\.userData && hit\.object\.userData\.isHea
 assert(/const hsMul = isHead \? HEADSHOT_MUL : 1;/.test(sh), 'headshot multiplier resolved');
 assert(/const dmg=w\.dmg\*dmgMul\*hsMul;/.test(sh), 'pvp damage scaled by headshot');
 assert(/NET\.conn\.send\(\{t:'hit', e:id, d:w\.dmg\*dmgMul\*hsMul\}\)/.test(sh), 'client->host enemy damage scaled');
-assert(/const dealt = w\.dmg\*dmgMul\*hsMul;/.test(sh), 'host/solo enemy damage scaled');
+assert(/let dealt = w\.dmg\*dmgMul\*hsMul;/.test(sh), 'host/solo enemy damage scaled (let: a Shieldbearer can reduce it on a frontal hit)');
 assert(/showHitmarker\(isHead\)/.test(sh), 'headshot hitmarker');
 assert(/spawnDamageNumber\(hit\.point, dealt, _ek, isHead\)/.test(sh), 'damage number flagged as head');
 done('headshot zones');
