@@ -8067,7 +8067,7 @@ const ENEMY_TYPES = {
   grunt:  { name:'Grunt',  hp:30, speedMin:6,   speedMax:9,  scale:1.0, tint:0xff2d55, dmg:9 },
   runner: { name:'Runner', hp:16, speedMin:11,  speedMax:13, scale:0.8, tint:0xffd166, dmg:6 },
   brute:  { name:'Brute',  hp:90, speedMin:3.5, speedMax:5,  scale:1.5, tint:0x9b6cff, dmg:18 },
-  gunner: { name:'Gunner', hp:24, speedMin:4,   speedMax:6,  scale:1.0, tint:0x4dd2ff, dmg:4, ranged:true, standoff:11, fireCd:1.6, projSpeed:38, burst:4, burstGap:0.09 },
+  gunner: { name:'Gunner', hp:24, speedMin:4,   speedMax:6,  scale:1.0, tint:0x4dd2ff, dmg:4, ranged:true, standoff:11, fireCd:1.6, projSpeed:38, burst:4, burstGap:0.09, strafe:true },   // build 633: gunners strafe sideways while holding standoff (harder to hit, more alive)
   boss:   { name:'BOSS',   hp:900,speedMin:2.8, speedMax:4.2,scale:2.6, tint:0xff7b00, dmg:28, ranged:true, standoff:14, fireCd:1.1, projSpeed:26 },
   // build 628: Sapper — a fast, fragile rusher that doesn't swing; it DETONATES (blast + falloff) when it reaches
   // you OR when killed. Kill it from range or it takes a chunk out of you (and launches you). dmg:0 = no melee.
@@ -9328,6 +9328,7 @@ function spawnEnemy(spawn){
   const e = { id: nextEnemyId++, mesh, hp:ty.hp, maxHp:ty.hp, speed: ty.speedMin + Math.random()*(ty.speedMax-ty.speedMin), dmg:ty.dmg, type:typeKey, vy:0, evx:0, evz:0, grounded:true, launchY:0, lastHit:0, cooldown:0,
     ranged: !!ty.ranged, standoff: ty.standoff||11, fireCd: ty.fireCd||1.5, projSpeed: ty.projSpeed||24, burst: ty.burst||1, burstGap: ty.burstGap||0.09, shootCd: 0.4 + Math.random()*0.8,
     exploder: !!ty.exploder, blastR: ty.blastR||6, blastDmg: ty.blastDmg||40,   // build 628: Sapper detonation
+    strafe: !!ty.strafe,   // build 633: ranged enemy strafes while holding standoff
 
     mode: (spawn && spawn.mode) ? spawn.mode : 'hunt',
     home: spawn ? { x:px, z:pz } : null,
@@ -14369,7 +14370,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 632 · 2026-06-22';
+const BUILD_VERSION = 'build 633 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17415,6 +17416,13 @@ function loop(){
         const toPx = near.pos.x - en.mesh.position.x, toPz = near.pos.z - en.mesh.position.z, pd = Math.hypot(toPx,toPz)||1;
         if(pd > en.standoff + 1){ en._wantMove=true; en.mesh.position.x += toPx/pd*en.speed*dt; en.mesh.position.z += toPz/pd*en.speed*dt; }
         else if(pd < en.standoff*0.6){ en._wantMove=true; en.mesh.position.x -= toPx/pd*en.speed*dt; en.mesh.position.z -= toPz/pd*en.speed*dt; }
+        else if(en.strafe && en._see){   // build 633: at standoff -> STRAFE sideways (circle the player) instead of standing still. Flips direction on a timer or when it would walk into a wall.
+          if(en._strafeDir==null || nowMs > (en._strafeFlip||0)){ en._strafeDir = (Math.random()<0.5?-1:1); en._strafeFlip = nowMs + 1100 + Math.random()*1500; }
+          const sx = -toPz/pd*en._strafeDir, sz = toPx/pd*en._strafeDir;   // perpendicular to the player line
+          const nx = en.mesh.position.x + sx*en.speed*0.62*dt, nz = en.mesh.position.z + sz*en.speed*0.62*dt;
+          if(typeof insideSolid!=='function' || !insideSolid(nx, nz, (en._groundY!=null?en._groundY:0)+0.4)){ en._wantMove=true; en.mesh.position.x = nx; en.mesh.position.z = nz; }
+          else { en._strafeFlip = 0; }   // wall ahead -> reverse next frame
+        }
       } else if(d > stopAt){
         // beeline straight at the target — the pre-531 behavior that always produces motion in the open.
         en._wantMove = true;
