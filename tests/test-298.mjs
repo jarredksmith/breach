@@ -14,5 +14,5 @@ assert(/label\.position\.y=2\.5; g\.add\(label\)/.test(src) || /\.position\.y=2\
 
 // damage numbers stay depthTest:false on purpose (transient hit feedback, not a positional reveal) — guard it
 // wasn't accidentally changed in a way that breaks them
-assert(/const sp = new THREE\.Sprite\(new THREE\.SpriteMaterial\(\{ map:tex, transparent:true, depthTest:false, depthWrite:false \}\)\)/.test(src), 'damage numbers intentionally remain see-through (brief feedback)');
+assert(/new THREE\.Sprite\(new THREE\.SpriteMaterial\(\{ transparent:true, depthTest:false, depthWrite:false \}\)\)/.test(src), 'damage numbers intentionally remain see-through (brief feedback)');
 done();

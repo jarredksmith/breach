@@ -8,8 +8,9 @@ assert(/if\(savedLevel && savedLevel\.dmgNum\)\{/.test(src), 'loads saved hit-nu
 const sdn = extractFunction('spawnDamageNumber');
 assert(/if\(!dmgNumCfg\.on\) return;/.test(sdn), 'OFF => no numbers spawned');
 assert(/const fs = Math\.max\(10, Math\.min\(120, dmgNumCfg\.size\|\|44\)\);/.test(sdn), 'font size from config (clamped 10..120)');
-assert(/cx\.font = 'bold '\+fs\+'px system-ui/.test(sdn), 'canvas font uses the configured size');
-assert(/cv\.width = Math\.ceil\(fs\*2\.9\)/.test(sdn), 'canvas scales with the font so big sizes do not clip');
+const dtex = extractFunction('_dmgTex');   // build 625: the canvas/texture is built (+cached) in _dmgTex now
+assert(/cx\.font = 'bold '\+fs\+'px system-ui/.test(dtex), 'canvas font uses the configured size');
+assert(/cv\.width = Math\.ceil\(fs\*2\.9\)/.test(dtex), 'canvas scales with the font so big sizes do not clip');
 assert(/dmgNumCfg\.killColor\|\|'#ff6b6b'/.test(sdn) && /dmgNumCfg\.hitColor\|\|'#ffe08a'/.test(sdn), 'colors come from config');
 assert(/const sc = \(fs\/44\) \* \(kill \? 1\.1 : 0\.8\)/.test(sdn), 'world size scales with font size');
 

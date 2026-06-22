@@ -11,7 +11,7 @@ assert(/kill \? '#ff4d6d' : '#fff'/.test(hm), 'kill marker turns red');
 // floating damage numbers
 const sdn = extractFunction('spawnDamageNumber');
 assert(/kill \? \(dmgNumCfg\.killColor\|\|'#ff6b6b'\) : \(head \? '#ffd166' : \(dmgNumCfg\.hitColor\|\|'#ffe08a'\)\)/.test(sdn), 'kill numbers use kill color, hits use hit color');
-assert(/kill \? \(n \+ '!'\) : \(head \? \(n \+ '!'\) : \('' \+ n\)\)/.test(sdn), 'kill numbers get a "!"');
+assert(/\(kill \|\| head\) \? \(n \+ '!'\) : \('' \+ n\)/.test(sdn), 'kill + headshot numbers get a "!"');
 assert(/new THREE\.Sprite\(/.test(sdn) && /scene\.add\(sp\)/.test(sdn), 'numbers are world-space sprites');
 
 // enemy hit-flash (capsule emissive)

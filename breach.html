@@ -14251,7 +14251,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 624 · 2026-06-22';
+const BUILD_VERSION = 'build 625 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15875,6 +15875,28 @@ function registerLocalKill(){   // call when the LOCAL player gets a kill
 // ---- Combat feel: floating damage numbers, enemy hit-flash, hitstop ----
 let hitStop = 0;                 // brief time-scale dip on a kill (solo only), counted down in real time
 const dmgNumbers = [];           // world-space sprites that rise + fade
+// build 625: damage numbers used to build a fresh <canvas> + CanvasTexture (a GPU upload) per hit and dispose it
+// on expiry — a per-hit allocate/upload/free churn that stuttered combat. Now the rendered glyph texture is CACHED
+// by its (text|color|size) key and SHARED across every number showing that value, and the Sprites themselves are
+// pooled. Damage values are a tiny set (a handful of integers), so after a moment of play it's all cache hits and
+// reused sprites — no per-hit canvas, no texture upload, no dispose.
+const _dmgTexCache = new Map();   // 'txt|color|fs' -> CanvasTexture (LRU; shared by all live numbers of that value)
+const _DMG_TEX_MAX = 96;
+const _dmgSpritePool = [];        // free Sprite objects (each keeps its own SpriteMaterial)
+function _dmgTex(txt, color, fs){
+  const key = txt+'|'+color+'|'+fs;
+  let tex = _dmgTexCache.get(key);
+  if(tex){ _dmgTexCache.delete(key); _dmgTexCache.set(key, tex); return tex; }   // bump LRU recency
+  const cv = document.createElement('canvas'); cv.width = Math.ceil(fs*2.9); cv.height = Math.ceil(fs*1.5);
+  const cx = cv.getContext('2d');
+  cx.font = 'bold '+fs+'px system-ui, sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
+  cx.lineWidth = Math.max(3, fs*0.14); cx.strokeStyle = 'rgba(0,0,0,0.85)'; cx.fillStyle = color;
+  cx.strokeText(txt, cv.width/2, cv.height/2); cx.fillText(txt, cv.width/2, cv.height/2);
+  tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+  _dmgTexCache.set(key, tex);
+  if(_dmgTexCache.size > _DMG_TEX_MAX){ const old = _dmgTexCache.keys().next().value; const ot = _dmgTexCache.get(old); _dmgTexCache.delete(old); if(ot && ot.dispose) ot.dispose(); }   // evict the least-recently-used (long dead)
+  return tex;
+}
 // Floating hit-number look is authorable in the editor (on/off, font size, hit + kill colors) and saved.
 let dmgNumCfg = { on:true, size:44, hitColor:'#ffe08a', killColor:'#ff6b6b' };
 if(savedLevel && savedLevel.dmgNum){ const d=savedLevel.dmgNum; if(d.on!=null) dmgNumCfg.on=!!d.on; if(d.size) dmgNumCfg.size=+d.size; if(d.hit) dmgNumCfg.hitColor=d.hit; if(d.kill) dmgNumCfg.killColor=d.kill; }
@@ -15882,21 +15904,20 @@ function spawnDamageNumber(pos, amount, kill, head){
   if(!dmgNumCfg.on) return;
   const n = Math.max(1, Math.round(amount));
   const fs = Math.max(10, Math.min(120, dmgNumCfg.size||44));
-  const cv = document.createElement('canvas'); cv.width = Math.ceil(fs*2.9); cv.height = Math.ceil(fs*1.5);
-  const cx = cv.getContext('2d');
-  cx.font = 'bold '+fs+'px system-ui, sans-serif'; cx.textAlign='center'; cx.textBaseline='middle';
-  cx.lineWidth = Math.max(3, fs*0.14); cx.strokeStyle = 'rgba(0,0,0,0.85)';
-  cx.fillStyle = kill ? (dmgNumCfg.killColor||'#ff6b6b') : (head ? '#ffd166' : (dmgNumCfg.hitColor||'#ffe08a'));
-  const txt = kill ? (n + '!') : (head ? (n + '!') : ('' + n));
-  cx.strokeText(txt, cv.width/2, cv.height/2); cx.fillText(txt, cv.width/2, cv.height/2);
-  const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false, depthWrite:false }));
-  sp.renderOrder = 9500;
+  const color = kill ? (dmgNumCfg.killColor||'#ff6b6b') : (head ? '#ffd166' : (dmgNumCfg.hitColor||'#ffe08a'));
+  const txt = (kill || head) ? (n + '!') : ('' + n);
+  const tex = _dmgTex(txt, color, fs);
+  let sp = _dmgSpritePool.pop();
+  if(!sp){ sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent:true, depthTest:false, depthWrite:false })); }
+  const hadMap = !!sp.material.map;
+  sp.material.map = tex; sp.material.opacity = 1;
+  if(!hadMap) sp.material.needsUpdate = true;   // first map on this pooled material -> compile USE_MAP once; map->map swaps don't recompile
+  sp.visible = true; sp.renderOrder = 9500;
   const sc = (fs/44) * (kill ? 1.1 : 0.8);
   sp.position.set(pos.x + (Math.random()-0.5)*0.5, pos.y + 0.3 + (Math.random()-0.5)*0.3, pos.z + (Math.random()-0.5)*0.5);
   sp.scale.set(sc, sc*0.5, 1);
   scene.add(sp);
-  dmgNumbers.push({ sp, tex, born: performance.now(), life: kill?900:650, vy: 1.4 + Math.random()*0.6, sc });
+  dmgNumbers.push({ sp, born: performance.now(), life: kill?900:650, vy: 1.4 + Math.random()*0.6, sc });
 }
 function flashEnemy(en){
   const v = en.mesh.userData.visual;
@@ -15909,7 +15930,7 @@ function updateFloaters(dt){
   const now = performance.now();
   for(let i=dmgNumbers.length-1;i>=0;i--){
     const f = dmgNumbers[i], age = (now - f.born) / f.life;
-    if(age >= 1){ scene.remove(f.sp); f.sp.material.dispose(); f.tex.dispose(); dmgNumbers.splice(i,1); continue; }
+    if(age >= 1){ scene.remove(f.sp); f.sp.visible=false; _dmgSpritePool.push(f.sp); dmgNumbers.splice(i,1); continue; }   // build 625: recycle the sprite; the glyph texture stays cached + shared (never disposed here)
     f.sp.position.y += f.vy * dt;
     f.sp.material.opacity = age < 0.6 ? 1 : (1 - (age-0.6)/0.4);
     const s = f.sc * (1 + age*0.4); f.sp.scale.set(s, s*0.5, 1);
