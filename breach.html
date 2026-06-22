@@ -7771,7 +7771,11 @@ function finalizeProp(obj, src, t, gltf, slot, animMode, mat, nid, animClip){
   obj.rotation.set(t[3], t[4], t[5]);
   if(t.length >= 9) obj.scale.set(t[6], t[7], t[8]);   // non-uniform (e.g. cover crates)
   else obj.scale.setScalar(t[6]);
-  obj.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+  // build 642: rigged/skinned models compute their bounding sphere from the REST pose, so the MAIN camera can
+  // frustum-cull them (the whole prop vanishes) even while their shadow still renders from the sun's wider frustum
+  // — the "shadows on the ground but no props" you hit while hosting. Disable culling on skinned meshes so they
+  // always draw. (Static props keep culling — their bounds are correct.)
+  obj.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; if(o.isSkinnedMesh) o.frustumCulled = false; } });
   obj.userData.src = src;
   obj.userData.nid = nid || genNid();   // assign once; load/net paths pass an existing id to keep peers aligned
   if(animMode && typeof animMode==='object'){ obj.userData.animTrigger = animMode.trig||'auto'; obj.userData.animPlay = animMode.play||'loop'; obj.userData.animMode = (obj.userData.animTrigger==='auto')?'loop':'trigger'; }
@@ -14427,7 +14431,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 641 · 2026-06-22';
+const BUILD_VERSION = 'build 642 · 2026-06-22';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
