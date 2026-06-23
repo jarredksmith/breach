@@ -19,11 +19,11 @@ assert(/marquee-select props/.test(mh[1]), 'the Build hint still documents marqu
 // --- collapse defaults: secondary panels start closed ---
 const dc = src.match(/const defaultCollapsed = \{([^}]*)\};/);
 assert(dc, 'defaultCollapsed map exists');
-for(const k of ['generate','invitems','impactfx','tracerfx','crosshair','boltfx','characters','material','loot','campaign'])
+for(const k of ['generate','invitems','boltfx','characters','material','loot','campaign'])
   assert(new RegExp('\\b'+k+':true').test(dc[1]), 'secondary section "'+k+'" starts collapsed');
 
 // the primary panels are NOT force-collapsed (they open with the mode)
-for(const k of ['object','transform','world','zones','enemies','game','pickups','levelfile'])
+for(const k of ['object','transform','world','zones','wepfx','enemies','game','pickups','levelfile'])
   assert(!new RegExp('\\b'+k+':true').test(dc[1]), 'primary section "'+k+'" stays open by default');
 
 done('build 651: mode-aware hint + cleaner collapse defaults');

@@ -14521,7 +14521,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 652 · 2026-06-23';
+const BUILD_VERSION = 'build 653 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18277,7 +18277,7 @@ const MODE_SECTIONS = {
   player:  ['gizmo','object','transform','characters'],   // build 652: the player avatar, the spawn point + the character roster are their own area
   enemies: ['enemies','gizmo','object','transform','boltfx'],   // spawn points live here now; their picker/fields/gizmo sections come along. enemy gunfire FX (boltfx) moved here in build 647 — it's about enemies, not your weapons
   rules:   ['game','pickups','loot','invitems'],
-  kit:     ['object','transform','impactfx','tracerfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; crosshair; music/SFX live in Scene
+  kit:     ['object','transform','wepfx'],   // 'object' carries the weapon model import + per-weapon shoot sound; the 3 FX panels (impacts/tracer/crosshair) are grouped under one 'wepfx' picker (build 653); music/SFX live in Scene
   files:   ['levelfile','campaign'],
 };
 // Plain-language one-liner shown under each section header (build 648). Keyed by the section's data-sec key
@@ -18343,6 +18343,27 @@ function renderZonePicker(){
   }
   host.appendChild(bar);
   const sub=document.createElement('div'); sub.className='edSecSub'; sub.style.margin='0 0 4px'; sub.textContent=SEC_SUB[activeZoneType]||''; host.appendChild(sub);
+}
+// Which weapon-FX panel shows inside the grouped 'Effects' section (build 653) — same pattern as the Zones picker.
+const WEPFX_TYPES = [['impactfx','\ud83d\udca5','Impacts'],['tracerfx','\ud83d\udca8','Tracer'],['crosshair','\u25ce','Crosshair']];
+const WEPFX_HOST = { impactfx:'edImpactFx', tracerfx:'edTracerFx', crosshair:'edCrosshair' };
+let activeWepFx = 'impactfx';
+try{ const _w = localStorage.getItem('breach_editor_wepfx'); if(_w && WEPFX_HOST[_w]) activeWepFx = _w; }catch(e){}
+function applyWepFxVisibility(){
+  if(!editorEl) return;
+  for(const k in WEPFX_HOST){ const el=document.getElementById(WEPFX_HOST[k]); if(el) el.style.display = (k===activeWepFx)?'':'none'; }
+}
+function renderWepFxPicker(){
+  const host=document.getElementById('edWepFxPicker'); if(!host) return; host.innerHTML='';
+  const bar=document.createElement('div'); bar.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;';
+  for(const [key,icon,label] of WEPFX_TYPES){
+    const on=activeWepFx===key; const b=document.createElement('button'); b.textContent=icon+' '+label;
+    b.style.cssText='flex:1 1 auto;padding:5px 6px;font-size:11px;border-radius:5px;cursor:pointer;border:1px solid '+(on?'#ff9b5b':'rgba(255,155,91,0.25)')+';background:'+(on?'rgba(255,155,91,0.22)':'transparent')+';color:'+(on?'#ffe7d4':'#e6c6ad')+';';
+    b.onclick=()=>{ activeWepFx=key; try{ localStorage.setItem('breach_editor_wepfx', key); }catch(e){} renderWepFxPicker(); applyWepFxVisibility(); };
+    bar.appendChild(b);
+  }
+  host.appendChild(bar);
+  const sub=document.createElement('div'); sub.className='edSecSub'; sub.style.margin='0 0 4px'; sub.textContent=SEC_SUB[activeWepFx]||''; host.appendChild(sub);
 }
 // Show only this mode's target-tabs + sections; hide the rest. Highlights the active mode button.
 function applyEditorMode(){
@@ -19409,10 +19430,12 @@ function buildEditorPanel(){
         + '<div id="edJumpPads" class="zoneHost" data-zone="jumppads"></div>'
         + '<div id="edLadders" class="zoneHost" data-zone="ladders"></div>'
         + '<div id="edFireZones" class="zoneHost" data-zone="firezones"></div>')
-    + sec('Bullet impacts', 'impactfx', '<div id="edImpactFx"></div>')
-    + sec('Bullet tracer', 'tracerfx', '<div id="edTracerFx"></div>')
+    + sec('Effects', 'wepfx',
+          '<div id="edWepFxPicker"></div>'
+        + '<div id="edImpactFx" class="wepfxHost" data-wepfx="impactfx"></div>'
+        + '<div id="edTracerFx" class="wepfxHost" data-wepfx="tracerfx"></div>'
+        + '<div id="edCrosshair" class="wepfxHost" data-wepfx="crosshair"></div>')
     + sec('Enemy gunfire', 'boltfx', '<div id="edBoltFx"></div>')
-    + sec('Crosshair', 'crosshair', '<div id="edCrosshair"></div>')
     + sec('Characters', 'characters', '<div id="edCharRoster"></div>')
     + sec('Level file', 'levelfile',
         '<div id="edIssues"></div>'
@@ -19518,6 +19541,8 @@ function buildEditorPanel(){
   if(typeof renderImpactFxPanel==='function') renderImpactFxPanel();
   if(typeof renderTracerFxPanel==='function') renderTracerFxPanel();
   if(typeof renderBoltFxPanel==='function') renderBoltFxPanel();
+  if(typeof renderWepFxPicker==='function') renderWepFxPicker();          // build 653: the grouped weapon-FX type picker
+  if(typeof applyWepFxVisibility==='function') applyWepFxVisibility();     // ...and reveal only the active FX panel
   // restore saved width + wire drag-to-resize (drag the left edge; wider = more room for the crowded panels)
   try{ const w = parseInt(localStorage.getItem('breach_editor_width')||'',10); if(w>=260 && w<=window.innerWidth*0.92) p.style.width = w+'px'; }catch(e){}
   (function(){
@@ -19532,7 +19557,7 @@ function buildEditorPanel(){
   let secState = {}; try{ secState = JSON.parse(localStorage.getItem('breach_editor_sections')||'{}') || {}; }catch(e){}
   // collapse secondary sections by default so each mode opens to its primary panel, not a wall (build 651);
   // a user's own expand/collapse choices (secState) still override these.
-  const defaultCollapsed = { material:true, loot:true, sounds:true, campaign:true, generate:true, invitems:true, impactfx:true, tracerfx:true, crosshair:true, boltfx:true, characters:true };
+  const defaultCollapsed = { material:true, loot:true, sounds:true, campaign:true, generate:true, invitems:true, boltfx:true, characters:true };
   p.querySelectorAll('.edSection').forEach(s=>{
     const k = s.dataset.sec;
     // one-line plain-language subtitle under each header (build 648): explains the section to a first-timer.
