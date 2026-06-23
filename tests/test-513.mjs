@@ -6,10 +6,12 @@ const src = gameSource();
 // #hud so it never restyles the editor or menus.
 
 // --- config + sanitize (executable) ---
-const _sanitizeHud = new Function('HUD_TOGGLES','HUD_FONTS','DEFAULT_HUD', extractFunction('_sanitizeHud') + '; return _sanitizeHud;')(
+const HUD_EL = [{k:'health'},{k:'ammo'},{k:'score'},{k:'wave'},{k:'minimap'},{k:'crosshair'}];
+const _sanitizeHud = new Function('HUD_TOGGLES','HUD_FONTS','HUD_ELEMENTS','DEFAULT_HUD', extractFunction('_sanitizeHud') + '; return _sanitizeHud;')(
   ['minimap','score','wave','ammo','health','crosshair','killfeed'],
   ['Chakra Petch','Orbitron','VT323'],
-  { accent:'#38f5b5', health:'#ff4d6d', score:'#ffd166', uiFont:'Chakra Petch', displayFont:'Chakra Petch', shape:'angular', panelOp:1, border:true, hide:{} }
+  HUD_EL,
+  { accent:'#38f5b5', health:'#ff4d6d', score:'#ffd166', uiFont:'Chakra Petch', displayFont:'Chakra Petch', shape:'angular', panelOp:1, border:true, hide:{}, el:{} }
 );
 {
   const d = _sanitizeHud(undefined);
