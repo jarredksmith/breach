@@ -13675,6 +13675,9 @@ const STATION_POS = new THREE.Vector3(8.00000, 0.00000, 7.82061);
 const STATION_SCALE = 0.25297;                          // tweak if the model imports too large/small
 const STATION_ROT = new THREE.Euler(0.00000, 3.14159, 0.00000); // face the terminal toward spawn (origin)
 let station = null;
+// build 654: the ammo/buy station is optional — not every level wants a restock terminal. Default ON so
+// existing levels are unchanged; a level can save it OFF and no station is built (proximity/buy guard on `station`).
+let stationEnabled = !(savedLevel && savedLevel.stationEnabled===false);
 function applyStationLight(){
   if(!station || !station.light) return;
   const s = (typeof editorTargets!=='undefined' && editorTargets.station) ? editorTargets.station.state : {};
@@ -13683,6 +13686,7 @@ function applyStationLight(){
   station.light.distance  = (s.lightDist!=null)?s.lightDist:14;
 }
 function buildStation(){
+  if(!stationEnabled){ station = null; return; }   // build 654: level opted out of the ammo station
   // Create the station record + glow immediately so proximity/buying work even before the model loads.
   const g = new THREE.Group();
   g.position.copy(STATION_POS);
@@ -13736,6 +13740,20 @@ function loadStationModel(){
   );
 }
 function swapStationModel(url){ stationModelUrl = url; loadStationModel(); }
+// Remove the station entirely from the scene + collision (build 654). Safe to call when already gone.
+function teardownStation(){
+  if(!station) return;
+  if(station.light) scene.remove(station.light);
+  if(station.collider){ const i=colliders.indexOf(station.collider); if(i>=0) colliders.splice(i,1); scene.remove(station.collider); }
+  if(station.group) scene.remove(station.group);
+  station = null;
+}
+// Editor/level toggle: turn the ammo station on (build it) or off (tear it down).
+function setStationEnabled(on){
+  stationEnabled = !!on;
+  if(stationEnabled){ if(!station) buildStation(); }
+  else teardownStation();
+}
 
 // ---------- Chests ----------
 const chests = [];
@@ -14521,7 +14539,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 653 · 2026-06-23';
+const BUILD_VERSION = 'build 654 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18705,6 +18723,7 @@ function serializeLevel(){
     attModels: (typeof attModels!=='undefined') ? JSON.parse(JSON.stringify(attModels)) : {},
     invItems: (typeof invCatalog!=='undefined') ? JSON.parse(JSON.stringify(invCatalog)) : {},
     station: { url: stationModelUrl, state: Object.assign({}, editorTargets.station.state) },
+    stationEnabled: !!stationEnabled,   // build 654: the ammo station is optional per level
     player:  { url: playerModelCfg.url, thumb: playerModelCfg.thumb||'', state: Object.assign({}, editorTargets.player.state), clips: Object.assign({}, playerModelCfg.clips), clipSpeed: Object.assign({}, playerModelCfg.clipSpeed||{}), clipHold: Object.assign({}, playerModelCfg.clipHold||{}), clipInPlace: Object.assign({}, playerModelCfg.clipInPlace||{}) },
     world:   Object.assign({}, worldCfg),
     chest:   { url: chestModelUrl, scale: chestModelScale, randomOff: !randomLootOn },
@@ -19090,7 +19109,8 @@ function restoreLevel(level){
   if(level.aimWep){ for(const k in level.aimWep) aimByWep[k]=Object.assign({}, AIM_DEFAULT, level.aimWep[k]); }
   if(level.aim){ Object.assign(editorTargets.aim.state, level.aim.state||{}); if(!level.aimWep){ for(const k of Object.keys(WEAPONS)) aimByWep[k]=Object.assign({}, level.aim.state); } }
   applyWeaponAim(curWep); if(editorTargets.aim.syncFromWeapon) editorTargets.aim.syncFromWeapon();
-  if(level.station){ if(level.station.url && level.station.url!==stationModelUrl) swapStationModel(level.station.url); Object.assign(editorTargets.station.state, level.station.state||{}); editorTargets.station.apply(); }
+  setStationEnabled(!(level.stationEnabled===false));   // build 654: build or tear down to match the level
+  if(level.station && station){ if(level.station.url && level.station.url!==stationModelUrl) swapStationModel(level.station.url); Object.assign(editorTargets.station.state, level.station.state||{}); editorTargets.station.apply(); }
   // world + loot
   if(level.world){ worldCfg = Object.assign({}, DEFAULT_WORLD, level.world); applyWorldCfg(); }
   if(level.audio){ try{ audioSettings.musicUrl=(typeof level.audio.musicUrl==='string')?level.audio.musicUrl:''; audioSettings.sounds=_sanitizeSounds(level.audio.sounds); if(typeof saveAudioSettings==='function') saveAudioSettings(); if(typeof preloadCustomSounds==='function') preloadCustomSounds(); if(_musicOn){ stopMusic(); startMusic(); } }catch(e){ console.warn('level audio apply failed', e); } }
@@ -19843,6 +19863,7 @@ function renderEditorFields(){
   if(spawnRouteEdit && (editorActive!=='spawns' || editorTargets.spawns.obj()!==spawnRouteEdit || spawnRouteEdit.userData.mark.mode!=='patrol')) spawnRouteEdit=null;   // route placement only while its patrol spawn stays selected
   editorEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.key===editorActive));
   const tgt = editorTargets[editorActive] || { obj(){ return null; }, code(){ return ''; } };   // zone targets (fire/jump/death) have no editorTargets entry — render as a no-op selectable
+  const _stationOff = (editorActive==='station' && !stationEnabled);   // build 654: hide the model/transform editors when the station is toggled off
   if(editorActive==='extract') refreshExtractMarker();
   ensurePlayerPreview(editorActive==='player');
   if(extractZone) extractZone.visible = (editorActive==='extract');   // the beacon shows as an editor marker only on its own tab
@@ -20635,6 +20656,16 @@ function renderEditorFields(){
   // prop picker (only for the selectable Props target)
   const picker = editorEl.querySelector('#edPicker');
   picker.innerHTML = '';
+  // build 654: the ammo station is optional. A checkbox at the top of the Station tab builds/tears it down;
+  // when off, its model + transform editors are hidden (nothing to edit) but the toggle stays.
+  if(editorActive==='station'){
+    const box=document.createElement('label'); box.style.cssText='display:flex;align-items:center;gap:8px;color:#9fe6cf;font-size:12px;margin:2px 0 6px;cursor:pointer;';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!stationEnabled; cb.style.cssText='width:15px;height:15px;accent-color:var(--accent)';
+    cb.onchange=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); setStationEnabled(cb.checked); renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); };
+    const sp=document.createElement('span'); sp.innerHTML='Include the <b>ammo / buy station</b> in this level';
+    box.appendChild(cb); box.appendChild(sp); picker.appendChild(box);
+    if(!stationEnabled){ const h=document.createElement('div'); h.className='hint'; h.style.margin='0 0 4px'; h.innerHTML='Station is <b>off</b> — players won’t have a restock terminal. Tick the box to place one and edit its model & position.'; picker.appendChild(h); }
+  }
   if(tgt.isPstart){
     const h=document.createElement('div'); h.className='hint'; h.style.margin='0 0 6px';
     h.innerHTML='This is where you (and co-op players) spawn at the start of a run. Drag the <b>blue marker</b> with the move gizmo to position it; use the rotate gizmo or the slider below to set which way you face.';
@@ -21200,7 +21231,7 @@ function renderEditorFields(){
     }
     urlHost.appendChild(wrow);
   }
-  if(tgt.urlField){
+  if(tgt.urlField && !_stationOff){
     if(tgt.perWeapon){
       const wh = document.createElement('div'); wh.className='hint'; wh.style.margin='2px 0 3px';
       wh.innerHTML = '<b>Editing weapon</b> — each weapon has its own model + framing';
@@ -21635,7 +21666,7 @@ function renderEditorFields(){
   host.innerHTML = '';
   editorFieldInputs = [];
   { const xfSec = host.closest('.edSection'); const xfInMode=(MODE_SECTIONS[editorMode]||[]).indexOf('transform')>=0;
-    if(xfSec) xfSec.style.display = (xfInMode && tgt.fields && tgt.fields.length) ? '' : 'none'; }   // no fields (Extract) -> hide
+    if(xfSec) xfSec.style.display = (xfInMode && tgt.fields && tgt.fields.length && !_stationOff) ? '' : 'none'; }   // no fields (Extract), or station toggled off -> hide
   for(const fld of (tgt.fields || [])){
     const wrap = document.createElement('div'); wrap.className='field';
     const lab = document.createElement('label');
