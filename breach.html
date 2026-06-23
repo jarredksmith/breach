@@ -9646,6 +9646,7 @@ function _migrateFireZone(z){ return { x:+z.x||0, z:+z.z||0, r:(z.r!=null?+z.r:5
 let fireZones = (savedLevel && Array.isArray(savedLevel.fireZones)) ? savedLevel.fireZones.map(z=>_migrateFireZone(z)) : [];
 let selFireZone = -1;
 let audioZoneMarkers = []; const _zoneRT = [];   // editor ring markers + per-zone runtime playback state
+let selAudioZone = -1;   // build 657: tracks the audio zone clicked in the scene (no gizmo today; the panel can scroll to/highlight it later)
 let newPickupKind = 'health';
 let pickupsOn = !(savedLevel && savedLevel.pickupsOn === false);   // off => no pickups at all (not even the default fallback set)
 let pickupModels = (savedLevel && savedLevel.pickupModels && typeof savedLevel.pickupModels==='object') ? JSON.parse(JSON.stringify(savedLevel.pickupModels)) : {};   // kind -> {url, scale}: custom model in place of the floating icon
@@ -14551,7 +14552,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 656 · 2026-06-23';
+const BUILD_VERSION = 'build 657 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18362,6 +18363,16 @@ function applyZoneVisibility(){
 }
 // Segmented picker at the top of the Zones section: pick which volume type you're placing. Shows that
 // type's plain-language description underneath (reusing SEC_SUB), then reveals only its tools.
+// Used by scene-click selection (build 657): when you click a zone (audio/death/jump/ladder/fire) anywhere on
+// the map, jump to World mode AND switch the grouped Zones picker to that type so its tools are visible.
+function revealZoneTool(type){
+  if(!ZONE_HOST[type]) return;
+  if(typeof setEditorMode==='function' && editorMode!=='scene') setEditorMode('scene', true);
+  activeZoneType = type;
+  try{ localStorage.setItem('breach_editor_zone', type); }catch(e){}
+  if(typeof applyZoneVisibility==='function') applyZoneVisibility();
+  if(typeof renderZonePicker==='function') renderZonePicker();
+}
 function renderZonePicker(){
   const host=document.getElementById('edZonePicker'); if(!host) return; host.innerHTML='';
   const bar=document.createElement('div'); bar.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;';
@@ -22291,6 +22302,13 @@ renderer.domElement.addEventListener('click', (e)=>{
   for(const m of pickupMarkers){ if(m && m.visible) targets.push(m); }
   for(const m of lootMarkers){ if(m && m.visible) targets.push(m); }
   for(const m of deathZoneMarkers){ if(m && m.visible) targets.push(m); }
+  // build 657: every placeable thing must be click-selectable. Adds turrets, ladders, audio zones, the player
+  // start marker, and the extract zone (their markers/visuals are already visible during editing).
+  for(const g of turretModels){ if(g) targets.push(g); }
+  for(const m of ladderMarkers){ if(m && m.visible) targets.push(m); }
+  for(const m of audioZoneMarkers){ if(m && m.visible) targets.push(m); }
+  if(playerSpawnMarker && playerSpawnMarker.visible) targets.push(playerSpawnMarker);
+  if(extractZone && extractZone.visible) targets.push(extractZone);
   if(!targets.length) return;
   const hits = raycaster.intersectObjects(targets, true);
   if(!hits.length) return;
@@ -22312,14 +22330,29 @@ renderer.domElement.addEventListener('click', (e)=>{
     const jpi = jumpPadMarkers.indexOf(root);
     if(jpi>=0){ picked='jumppads'; selJumpPad=jpi; break; }
     { let g=root; while(g){ const fzi=fireZoneFx.indexOf(g); if(fzi>=0){ picked='firezones'; selFireZone=fzi; break; } g=g.parent; } if(picked==='firezones') break; }
+    // build 657: turret/ladder/audio-zone/pstart/extract resolution
+    const ti = turretModels.indexOf(root);
+    if(ti>=0){ picked='turrets'; editorTargets.turrets.idx=ti; selTurrets=[turretModels[ti]]; break; }
+    const ldi = ladderMarkers.indexOf(root);
+    if(ldi>=0){ picked='ladders'; selLadder=ldi; break; }
+    const azi = audioZoneMarkers.indexOf(root);
+    if(azi>=0){ picked='audiozones'; selAudioZone=azi; break; }
+    if(playerSpawnMarker && root===playerSpawnMarker){ picked='pstart'; break; }
+    if(extractZone && root===extractZone){ picked='extract'; break; }
     root = root.parent;
   }
   if(picked && picked!=='pickups') selPickup = -1;   // selecting anything else releases a grabbed pickup
   if(picked==='pickups'){ selProps.length=0; selLights.length=0; selSpawns=[]; gizmoMode='translate'; if(typeof renderEditorFields==='function') renderEditorFields(); updateSelectionHighlight(); }
   else if(picked==='loot'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; gizmoMode='translate'; if(typeof refreshLootMarkers==='function') refreshLootMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); updateSelectionHighlight(); }
-  else if(picked==='deathzones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='deathzones'; if(typeof refreshDeathZoneMarkers==='function') refreshDeathZoneMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
-  else if(picked==='jumppads'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='jumppads'; if(typeof refreshJumpPadMarkers==='function') refreshJumpPadMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
-  else if(picked==='firezones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='firezones'; if(typeof refreshFireZones==='function') refreshFireZones(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='deathzones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='deathzones'; if(typeof revealZoneTool==='function') revealZoneTool('deathzones'); if(typeof refreshDeathZoneMarkers==='function') refreshDeathZoneMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='jumppads'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='jumppads'; if(typeof revealZoneTool==='function') revealZoneTool('jumppads'); if(typeof refreshJumpPadMarkers==='function') refreshJumpPadMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='firezones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='firezones'; if(typeof revealZoneTool==='function') revealZoneTool('firezones'); if(typeof refreshFireZones==='function') refreshFireZones(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  // build 657: the rest of the placeables that were never click-selectable
+  else if(picked==='ladders'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='ladders'; if(typeof revealZoneTool==='function') revealZoneTool('ladders'); if(typeof refreshLadderMarkers==='function') refreshLadderMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='audiozones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; editorActive='audiozones'; if(typeof revealZoneTool==='function') revealZoneTool('audiozones'); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='turrets'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='turrets'; syncModeToActive(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='pstart'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='pstart'; syncModeToActive(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
+  else if(picked==='extract'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='extract'; syncModeToActive(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
   else if(picked==='props'){
     const obj = propModels[editorTargets.props.idx];
     if(e.shiftKey && obj){
