@@ -14521,7 +14521,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 649 · 2026-06-23';
+const BUILD_VERSION = 'build 650 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19438,15 +19438,27 @@ function buildEditorPanel(){
       if(typeof ResizeObserver!=='undefined'){ try{ new ResizeObserver(placeFab).observe(ed); }catch(e){} }
       if(dk){ const _dock=dk.onclick; dk.onclick=()=>{ if(_dock) _dock(); placeFab(); }; }
       const jump=(mode,target)=>{ if(target) editorActive=target; setEditorMode(mode, !!target); };
+      // build 650: the + menu is the ONE place to add anything placeable. Each entry jumps to the owning
+      // mode/target/zone-tool first so the new thing lands in view with its editor already showing.
+      const addZone=(type)=>{ jump('scene');
+        activeZoneType=type; if(typeof applyZoneVisibility==='function') applyZoneVisibility(); if(typeof renderZonePicker==='function') renderZonePicker();
+        if(type==='audiozones'){ pushUndoSnapshot(); audioZones.push({ x:+player.pos.x.toFixed(2), z:+player.pos.z.toFixed(2), r:14, url:'', vol:0.8, loop:true }); editorActive='audiozones'; refreshAudioZoneMarkers(); if(typeof renderAudioZonesPanel==='function') renderAudioZonesPanel(); }
+        else if(type==='deathzones'){ if(typeof addDeathZone==='function') addDeathZone(); }
+        else if(type==='jumppads'){ if(typeof addJumpPad==='function') addJumpPad(); }
+        else if(type==='ladders'){ if(typeof addLadder==='function') addLadder(); }
+        else if(type==='firezones'){ if(typeof addFireZone==='function') addFireZone(); }
+      };
+      const ZONE_ADD=[['audiozones','\ud83d\udd0a','Audio zone'],['deathzones','\u2620','Death zone'],['jumppads','\u2b06','Jump pad'],['ladders','\ud83e\ude9c','Ladder'],['firezones','\ud83d\udd25','Fire zone']];
       const ADD_ITEMS=[
         ['\u25a0 Box',      ()=>{ jump('build','props');   addSceneProp('box'); }],
         ['\u25cf Sphere',   ()=>{ jump('build','props');   addSceneProp('sphere'); }],
         ['\u25ac Cylinder', ()=>{ jump('build','props');   addSceneProp('cylinder'); }],
         ['\u25b2 Cone',     ()=>{ jump('build','props');   addSceneProp('cone'); }],
         ['\ud83d\udca1 Light',       ()=>{ jump('build','lights');  addSceneLight(); }],
+        ['\ud83d\udee1 Turret',      ()=>{ jump('build','turrets'); if(typeof addSceneTurret==='function') addSceneTurret(); }],
         ['\ud83d\udc7e Enemy spawn', ()=>{ jump('enemies','spawns'); addSceneSpawn(); }],
         ['\u25c6 Pickup pad \u25b8',  '_pickupSub'],
-        ['\ud83d\udd0a Audio zone',  ()=>{ jump('scene'); activeZoneType='audiozones'; if(typeof applyZoneVisibility==='function') applyZoneVisibility(); if(typeof renderZonePicker==='function') renderZonePicker(); pushUndoSnapshot(); audioZones.push({ x:+player.pos.x.toFixed(2), z:+player.pos.z.toFixed(2), r:14, url:'', vol:0.8, loop:true }); refreshAudioZoneMarkers(); if(typeof renderAudioZonesPanel==='function') renderAudioZonesPanel(); }],   // the zones panel has its own renderer — renderEditorFields doesn't repaint it
+        ['\u25c8 Zone \u25b8',        '_zoneSub'],
       ];
       const menuItem=(label, on)=>{ const it=document.createElement('div'); it.textContent=label;
         it.style.cssText='padding:6px 10px;cursor:pointer;border-radius:4px;font:12px ui-monospace,monospace;color:#cfeee2;';
@@ -19457,6 +19469,7 @@ function buildEditorPanel(){
       const buildMain=()=>{ addMenu.innerHTML='';
         for(const [label, act] of ADD_ITEMS){
           if(act==='_pickupSub'){ menuItem(label, buildPickups); continue; }
+          if(act==='_zoneSub'){ menuItem(label, buildZones); continue; }
           menuItem(label, ()=>{ addMenu.style.display='none'; try{ act(); }catch(e){ console.warn('add failed', e); } });
         } };
       const buildPickups=()=>{ addMenu.innerHTML='';   // second level: pick which pad to drop
@@ -19465,6 +19478,10 @@ function buildEditorPanel(){
           const pk=POWERUP_KINDS[k];
           menuItem((pk.key?'\ud83d\udd11 ':'\u25c6 ')+(pk.key?keyDisplayName(pk.key):pk.label), ()=>{ addMenu.style.display='none'; newPickupKind=k; jump('rules'); addPickupSpot(k); });
         } };
+      const buildZones=()=>{ addMenu.innerHTML='';   // second level: pick which volume to drop
+        menuItem('\u2039 Back', buildMain);
+        for(const [type,icon,label] of ZONE_ADD){ menuItem(icon+' '+label, ()=>{ addMenu.style.display='none'; addZone(type); }); }
+      };
       buildMain();
       addBtn.onclick=(e)=>{ e.stopPropagation(); const opening = addMenu.style.display==='none'; if(opening) buildMain(); addMenu.style.display = opening ? 'block' : 'none'; };
       document.addEventListener('click', ()=>{ addMenu.style.display='none'; });

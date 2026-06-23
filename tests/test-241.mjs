@@ -6,8 +6,8 @@ const src = gameSource();
 assert(/<button id="edAdd"/.test(src) && /<div id="edAddMenu"/.test(src), 'palette button + menu in the top bar');
 const pi = src.indexOf('// "+ Add" palette:');
 assert(pi > 0, 'palette binding block exists');
-const pb = src.slice(pi, pi + 5200);   // build 342: fab creation lengthened the block
-for(const item of ['Box','Sphere','Cylinder','Cone','Light','Enemy spawn','Pickup pad','Audio zone'])
+const pb = src.slice(pi, pi + 7600);   // build 342/650: fab creation + the unified add helpers lengthened the block
+for(const item of ['Box','Sphere','Cylinder','Cone','Light','Turret','Enemy spawn','Pickup pad','Audio zone'])
   assert(pb.indexOf(item) > 0, 'palette offers: '+item);
 assert(/jump\('enemies','spawns'\); addSceneSpawn\(\);/.test(pb), 'spawn item jumps to the Enemies tab first');
 assert(/jump\('build','props'\);\s+addSceneProp\('box'\)/.test(pb), 'shape items jump to Build/props');
@@ -17,8 +17,17 @@ assert(/const buildPickups=\(\)=>\{/.test(pb) && /menuItem\('\\u2039 Back', buil
 assert(/newPickupKind=k; jump\('rules'\); addPickupSpot\(k\);/.test(pb), 'choosing a kind places it and remembers the choice');
 assert(/if\(opening\) buildMain\(\);/.test(pb), 'reopening always starts at the top level');
 // build 344: the zone panel is repainted by its own renderer, not renderEditorFields
-assert(/audioZones\.push\(\{[^}]+\}\); refreshAudioZoneMarkers\(\); if\(typeof renderAudioZonesPanel==='function'\) renderAudioZonesPanel\(\);/.test(pb), 'palette zone add repaints the zones panel (options + delete row appear)');
+assert(/audioZones\.push\(\{[^}]+\}\);[^;]*; refreshAudioZoneMarkers\(\); if\(typeof renderAudioZonesPanel==='function'\) renderAudioZonesPanel\(\);/.test(pb), 'palette zone add repaints the zones panel (options + delete row appear)');
 assert(!/audioZones\.push\(\{[^}]+\}\); refreshAudioZoneMarkers\(\); renderEditorFields\(\);/.test(pb), 'no longer calls the wrong renderer');
+
+// build 650: the + menu is the single way to add anything — all five zone tools + turret join it
+assert(/\['\\u25c8 Zone \\u25b8',        '_zoneSub'\]/.test(pb), 'a Zone submenu entry exists');
+assert(/const buildZones=\(\)=>\{/.test(pb) && /for\(const \[type,icon,label\] of ZONE_ADD\)\{ menuItem\(icon\+' '\+label/.test(pb), 'the Zone submenu lists every volume type');
+assert(/const ZONE_ADD=\[\['audiozones'[\s\S]*?'deathzones'[\s\S]*?'jumppads'[\s\S]*?'ladders'[\s\S]*?'firezones'/.test(pb), 'ZONE_ADD covers all five placeable volumes');
+assert(/const addZone=\(type\)=>\{/.test(pb), 'a shared addZone helper routes each zone type to its add fn');
+for(const fn of ['addDeathZone','addJumpPad','addLadder','addFireZone']) assert(pb.indexOf(fn)>0, 'addZone wires '+fn);
+assert(/jump\('build','turrets'\); if\(typeof addSceneTurret==='function'\) addSceneTurret\(\);/.test(pb), 'Turret can be added from the + menu');
+assert(/if\(act==='_zoneSub'\)\{ menuItem\(label, buildZones\); continue; \}/.test(pb), 'the main menu routes the Zone entry to its submenu');
 assert(/e\.stopPropagation\(\);/.test(pb) && /document\.addEventListener\('click', \(\)=>\{ addMenu\.style\.display='none'; \}\);/.test(pb), 'menu closes on outside click');
 // build 342: circular floating button outside the panel, side- and width-aware
 assert(/fab\.id='edAddFab'/.test(pb) && /border-radius:50%/.test(pb), 'Add is a floating circle');
