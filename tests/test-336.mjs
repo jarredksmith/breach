@@ -8,9 +8,10 @@ assert(/let UI_ACCENT = '#38f5b5', UI_ACCENT_RGB = '56,245,181';/.test(src), 'JS
 const ap = extractFunction('applyUiTheme');
 assert(/UI_ACCENT = uiTheme\.accent\|\|UI_THEME_DEFAULT\.accent;/.test(ap) && /UI_ACCENT_RGB = _hexToRgbTriplet\(UI_ACCENT\);/.test(ap), 'theme updates the canvas accent globals too');
 
-// minimap (canvas) reads the themed accent
-assert(/ctx\.strokeStyle = 'rgba\('\+UI_ACCENT_RGB\+',0\.12\)';/.test(src), 'minimap range rings use the themed accent');
-assert(/blip\(extractPos\.x, extractPos\.z, UI_ACCENT/.test(src), 'minimap objective blips use the themed accent');
+// minimap (canvas) reads the themed accent — build 669: per-level HUD accent (minimap tint > HUD accent > global)
+assert(/const _mAcc = \(typeof hudCfg!=='undefined' && hudCfg && hudCfg\.el && hudCfg\.el\.minimap && hudCfg\.el\.minimap\.accent\) \? hudCfg\.el\.minimap\.accent/.test(src), 'minimap accent derives from the per-level HUD config');
+assert(/ctx\.strokeStyle = 'rgba\('\+_mAccRgb\+',0\.12\)';/.test(src), 'minimap range rings use the per-level accent');
+assert(/blip\(extractPos\.x, extractPos\.z, _mAcc/.test(src), 'minimap objective blips use the per-level accent');
 
 // :root stays a real color (not circular) so the whole var system resolves
 assert(/:root\{ --accent:#38f5b5;/.test(page), ':root accent is a concrete color (not self-referential)');

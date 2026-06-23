@@ -14679,7 +14679,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 668 · 2026-06-23';
+const BUILD_VERSION = 'build 669 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16084,13 +16084,18 @@ const MINI_R = 90;                 // canvas radius (canvas is 180x180)
 const MINI_RANGE = 55;             // world units shown from center to edge
 function drawMinimap(){
   const ctx = miniCtx;
+  // build 669: the canvas-drawn dial uses the per-level HUD accent (minimap tint > HUD accent > global theme),
+  // so recolouring the HUD also recolours the minimap rings + objective markers.
+  const _mAcc = (typeof hudCfg!=='undefined' && hudCfg && hudCfg.el && hudCfg.el.minimap && hudCfg.el.minimap.accent) ? hudCfg.el.minimap.accent
+              : ((typeof hudCfg!=='undefined' && hudCfg && hudCfg.accent) ? hudCfg.accent : UI_ACCENT);
+  const _mAccRgb = _hexToRgbTriplet(_mAcc);
   ctx.clearRect(0,0,180,180);
   // circular clip so blips never spill outside the dial
   ctx.save();
   ctx.beginPath(); ctx.arc(MINI_R, MINI_R, MINI_R-2, 0, Math.PI*2); ctx.clip();
 
   // faint range rings
-  ctx.strokeStyle = 'rgba('+UI_ACCENT_RGB+',0.12)'; ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba('+_mAccRgb+',0.12)'; ctx.lineWidth = 1;
   for(const rr of [0.5, 1]){ ctx.beginPath(); ctx.arc(MINI_R, MINI_R, (MINI_R-4)*rr, 0, Math.PI*2); ctx.stroke(); }
 
   const scale = (MINI_R-4) / MINI_RANGE;
@@ -16116,9 +16121,9 @@ function drawMinimap(){
   // enemies (red)
   for(const en of enemies) blip(en.mesh.position.x, en.mesh.position.z, '#ff4d5e', 2.6);
   // extraction zone (pulsing green)
-  if((objectiveActive()==='extraction'||objectiveActive()==='defend') && extractZone && extractZone.visible) blip(extractPos.x, extractPos.z, UI_ACCENT, 4.2);
+  if((objectiveActive()==='extraction'||objectiveActive()==='defend') && extractZone && extractZone.visible) blip(extractPos.x, extractPos.z, _mAcc, 4.2);
   if(objectiveActive()==='destroy'){ for(const m of _destroyMarkers){ const o=m.userData.prop; if(o && !o.userData._shattered && o.parent) blip(o.position.x, o.position.z, '#ff5b6b', 3.6); } }
-  if(objectiveActive()==='escort'){ if(extractZone && extractZone.visible) blip(extractPos.x, extractPos.z, UI_ACCENT, 4.2); if(escortMarker && escortMarker.visible) blip(escortPos.x, escortPos.z, '#2fd0e0', 4.4); }
+  if(objectiveActive()==='escort'){ if(extractZone && extractZone.visible) blip(extractPos.x, extractPos.z, _mAcc, 4.2); if(escortMarker && escortMarker.visible) blip(escortPos.x, escortPos.z, '#2fd0e0', 4.4); }
 
   // multiplayer: other players + bots. Team modes color by team (red/blue); FFA shows everyone as foes.
   if(typeof NET!=='undefined' && NET.mode){
@@ -16211,16 +16216,19 @@ function _mapEventWorld(e){ const r=bigmapCv.getBoundingClientRect(), v=_mapV();
 function drawBigMap(){
   if(!mapOpen) return;
   const v=_mapV(), ctx=bigmapCtx, W=v.W, H=v.H;
+  const _mAcc = (typeof hudCfg!=='undefined' && hudCfg && hudCfg.el && hudCfg.el.minimap && hudCfg.el.minimap.accent) ? hudCfg.el.minimap.accent
+              : ((typeof hudCfg!=='undefined' && hudCfg && hudCfg.accent) ? hudCfg.accent : UI_ACCENT);   // build 669: match the minimap accent
+  const _mAccRgb = _hexToRgbTriplet(_mAcc);
   ctx.clearRect(0,0,W,H);
   // arena: a solid fill (no grid) with its boundary on top; colliders + blips draw over it
-  { const a=_w2s(-ARENA,-ARENA,v), b=_w2s(ARENA,ARENA,v); ctx.fillStyle='#0d171d'; ctx.fillRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.strokeStyle='rgba('+UI_ACCENT_RGB+',0.35)'; ctx.lineWidth=2; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); }
+  { const a=_w2s(-ARENA,-ARENA,v), b=_w2s(ARENA,ARENA,v); ctx.fillStyle='#0d171d'; ctx.fillRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.strokeStyle='rgba('+_mAccRgb+',0.35)'; ctx.lineWidth=2; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); }
   // collider footprints (walls / solid props) = the level's bones
   ctx.fillStyle='rgba(150,180,200,0.15)'; ctx.strokeStyle='rgba(150,180,200,0.3)'; ctx.lineWidth=1;
   for(const g of _mapGeo){ const a=_w2s(g[0],g[1],v), b=_w2s(g[2],g[3],v); const x=Math.min(a[0],b[0]),y=Math.min(a[1],b[1]),w=Math.abs(b[0]-a[0]),h=Math.abs(b[1]-a[1]); if(w<1.5&&h<1.5) continue; ctx.fillRect(x,y,w,h); ctx.strokeRect(x,y,w,h); }
   const dot=(wx,wz,color,r)=>{ const s=_w2s(wx,wz,v); ctx.fillStyle=color; ctx.beginPath(); ctx.arc(s[0],s[1],r,0,Math.PI*2); ctx.fill(); };
   // objective markers
   const _oa=(typeof objectiveActive==='function')?objectiveActive():null;
-  if((_oa==='extraction'||_oa==='defend'||_oa==='escort') && extractZone && extractZone.visible) dot(extractPos.x,extractPos.z,UI_ACCENT,6);
+  if((_oa==='extraction'||_oa==='defend'||_oa==='escort') && extractZone && extractZone.visible) dot(extractPos.x,extractPos.z,_mAcc,6);
   if(_oa==='escort' && escortMarker && escortMarker.visible) dot(escortPos.x,escortPos.z,'#2fd0e0',6);
   if(_oa==='destroy'){ for(const m of _destroyMarkers){ const o=m.userData.prop; if(o&&!o.userData._shattered&&o.parent) dot(o.position.x,o.position.z,'#ff5b6b',5); } }
   // stations + pickups
