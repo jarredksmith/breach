@@ -14573,7 +14573,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 660 · 2026-06-23';
+const BUILD_VERSION = 'build 661 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17261,6 +17261,11 @@ function loop(){
   if(hitStop > 0){ hitStop -= rawDt; dt = rawDt * 0.12; }   // impact freeze: slow the sim briefly (real-time countdown)
   if(typeof updateLaser==='function') updateLaser();   // build 585: laser sight dot/beam (hides itself when inactive)
   if(_infAmmo){ for(const k in WEAPONS){ const w=WEAPONS[k]; if(w && w.reserveMax!=null && w.reserve<w.reserveMax) w.reserve=w.reserveMax; } }   // build 589: unlimited ammo (testing)
+  // build 661: kill the cinematic camera-preview window the instant we leave editing. The branches below own
+  // the screen and return early (cutscene preview / level loader / campaign card), and live play gates the
+  // normal _renderCinePvWindow() call behind editorOpen — so without this its panel + frame border would
+  // linger on screen. Hiding it here, before any early-out, covers every one of those paths.
+  if(_cinePvPanel && (!editorOpen || _cineActive || !_cinePvOn)) _cinePvPanel.style.display='none';
   if(_levelLoaderActive){ pollGamepad(dt); renderScene(scene,camera); renderViewmodel(); return; }   // hold the world frozen behind the level loading screen until assets finish loading — checked BEFORE the cutscene so the intro cinematic can't advance while loading
   if(_cineActive){ updateCinematic(rawDt); if(mixers.length){ for(const m of mixers) m.update(rawDt); } if(typeof updateXAnim==='function') updateXAnim(rawDt); renderScene(scene,camera); return; }   // keep GLB clips AND mechanism/waypoint motion (doors, platforms, elevators) alive on camera   // keep prop/GLB animations alive on camera (raw time — no hitstop during a cutscene)   // intro/preview flythrough owns the camera; freeze the sim
   if(_interActive){ pollGamepad(dt); renderScene(scene,camera); renderViewmodel(); return; }   // campaign transition card owns the screen; hold the won level frozen behind it
