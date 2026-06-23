@@ -35,8 +35,8 @@ assert(/const dom=document\.querySelector\(e\.sel\);[\s\S]*?dom\.style\.setPrope
 assert(/dom\.style\.removeProperty\('--accent'\)/.test(ah), 'clearing the tint reverts to the global accent');
 
 // --- CSS consumes the vars with the right anchor per element ---
-assert(/#hud #stats     \{ transform: translate\(var\(--el-health-dx,0px\), var\(--el-health-dy,0px\)\) scale\(var\(--el-health-s,1\)\); transform-origin: left bottom; \}/.test(html), 'health scales from its bottom-left anchor');
-assert(/#hud #wavePanel \{ transform: translateX\(-50%\) translate\(var\(--el-wave-dx,0px\)[\s\S]*?transform-origin: center top; \}/.test(html), 'wave keeps its centering transform');
+assert(/#hud #stats     \{ transform: translate\(var\(--el-health-dx,0px\), var\(--el-health-dy,0px\)\) scale\(var\(--el-health-s,1\)\); transform-origin: left bottom;/.test(html), 'health scales from its bottom-left anchor');
+assert(/#hud #wavePanel \{ transform: translateX\(-50%\) translate\(var\(--el-wave-dx,0px\)[\s\S]*?transform-origin: center top;/.test(html), 'wave keeps its centering transform');
 assert(/#hud #crosshair \{ transform: translate\(-50%,-50%\) translate\(var\(--el-crosshair-dx,0px\)/.test(html), 'crosshair keeps its centering transform');
 
 // --- editor: a per-element picker + controls ---
