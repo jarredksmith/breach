@@ -37,7 +37,9 @@ assert(/w\.addEventListener\('beforeunload', reDock\);/.test(src), 'closing the 
 // closing the editor itself (P key) also re-docks any open popup, so it does not linger
 assert(/if\(editorEl && editorEl\._popWin\)\{ try\{ editorEl\._popWin\.close\(\); \}catch\(e\)\{\} if\(editorEl\._reDock\) editorEl\._reDock\(\); \}/.test(src), 'closing the editor closes + re-docks the popup');
 
-// the floating + button rides along too
-assert(/w\.document\.body\.appendChild\(fb\);/.test(src), 'the + button is moved into the popup with the editor');
+// build 660: the floating + button STAYS in the main window (it adds to the 3D scene), re-anchored top-right
+assert(!/w\.document\.body\.appendChild\(fb\);/.test(src), 'the + button no longer moves into the popup (build 660)');
+assert(/const fb=document\.getElementById\('edAddFab'\); if\(fb\)\{ if\(fb\._place\) fb\._place\(\); fb\.style\.display='block'; \}/.test(src), 'on pop-out the + is repositioned in the main window');
+assert(/if\(ed\._popWin\)\{ fab\.style\.left=''; fab\.style\.right='14px'/.test(src), 'while popped the + anchors to the main window top-right');
 
-done('build 658: HUD hidden in editor + pop-out into its own window');
+done('build 658/660: HUD hidden in editor + pop-out into its own window (+ stays in main)');
