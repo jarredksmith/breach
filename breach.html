@@ -14573,7 +14573,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 662 · 2026-06-23';
+const BUILD_VERSION = 'build 663 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17126,7 +17126,7 @@ let _cinePvT=0, _cinePvCam=null, _cinePvPanel=null, _cinePvFrame=null, _cinePvSl
 // build 662: pop the camera preview into its own window. The preview is WebGL (rendered with the main
 // renderer), so we can't just move the DOM like the editor panel — instead we render the shot into a small
 // render target, read the pixels back, and blit them onto a 2D canvas in the popup each frame.
-let _cinePvWin=null, _cinePvWinCanvas=null, _cinePvWinCtx=null, _cinePvPopBtn=null;
+let _cinePvWin=null, _cinePvWinCanvas=null, _cinePvWinCtx=null, _cinePvPopBtn=null, _cinePvHeader=null;
 let _cinePvRT=null, _cinePvPix=null, _cinePvImg=null, _cinePvBlanked=false;
 const _CINEPV_RW=640, _CINEPV_RH=360;
 let _cinePvPos=null; try{ const s=localStorage.getItem('breach_cinepvpos'); if(s){ const o=JSON.parse(s); if(o && typeof o.left==='number' && typeof o.top==='number') _cinePvPos=o; } }catch(e){}   // build 615: user-dragged position (px from top-left); null = auto-corner
@@ -17168,9 +17168,11 @@ function _ensureCinePvPanel(){
   const po=document.createElement('button'); po.textContent='\u2197'; po.title='Open camera preview in its own window'; po.style.cssText='flex:0 0 auto;background:none;border:none;color:#9fe6cf;font-size:12px;line-height:1;cursor:pointer;padding:0 2px;'; po.onclick=()=>{ if(_cinePvWin && !_cinePvWin.closed) _closeCinePvWindow(); else _openCinePvWindow(); }; _cinePvPopBtn=po;
   const x=document.createElement('button'); x.textContent='\u2715'; x.title='Hide camera preview'; x.style.cssText='flex:0 0 auto;background:none;border:none;color:#9fe6cf;font-size:13px;line-height:1;cursor:pointer;padding:0 2px;'; x.onclick=()=>{ _cinePvOn=false; if(typeof _closeCinePvWindow==='function') _closeCinePvWindow(); try{ localStorage.setItem('breach_cinepv','off'); }catch(e){} if(typeof renderEditorFields==='function') renderEditorFields(); };
   hdr.appendChild(lab); hdr.appendChild(sld); hdr.appendChild(po); hdr.appendChild(x);
-  // build 615: drag the window by its header (anywhere but the scrubber / buttons)
+  _cinePvHeader=hdr;   // build 662: moved into the popup window while popped out
+  // build 615: drag the window by its header (anywhere but the scrubber / buttons). Disabled while popped out
+  // (the header lives in the separate window then — drag the OS window instead).
   hdr.style.cursor='grab'; lab.style.cursor='grab'; let _drag=null;
-  hdr.addEventListener('pointerdown', (e)=>{ if(e.target===sld || e.target===x || e.target===po) return; const r=p.getBoundingClientRect(); _drag={ dx:e.clientX-r.left, dy:e.clientY-r.top }; try{ hdr.setPointerCapture(e.pointerId); }catch(_e){} hdr.style.cursor='grabbing'; e.preventDefault(); });
+  hdr.addEventListener('pointerdown', (e)=>{ if(_cinePvWin && !_cinePvWin.closed) return; if(e.target===sld || e.target===x || e.target===po) return; const r=p.getBoundingClientRect(); _drag={ dx:e.clientX-r.left, dy:e.clientY-r.top }; try{ hdr.setPointerCapture(e.pointerId); }catch(_e){} hdr.style.cursor='grabbing'; e.preventDefault(); });
   hdr.addEventListener('pointermove', (e)=>{ if(!_drag) return; const W=p.offsetWidth, H=p.offsetHeight; let left=Math.max(0, Math.min(innerWidth-W, e.clientX-_drag.dx)), top=Math.max(0, Math.min(innerHeight-H, e.clientY-_drag.dy)); _cinePvPos={ left, top }; p.style.left=left+'px'; p.style.top=top+'px'; p.style.right='auto'; p.style.bottom='auto'; });
   const _endDrag=()=>{ if(_drag){ _drag=null; hdr.style.cursor='grab'; try{ localStorage.setItem('breach_cinepvpos', JSON.stringify(_cinePvPos)); }catch(_e){} } };
   hdr.addEventListener('pointerup', _endDrag); hdr.addEventListener('pointercancel', _endDrag);
@@ -17206,12 +17208,14 @@ function _renderCinePvWindow(){
   if(!editorOpen || !_cinePvOn || _cineActive){ if(_cinePvPanel) _cinePvPanel.style.display='none'; _blankCinePvWindow(); return; }
   const shot=_cinePvShot();
   if(!shot){ if(_cinePvPanel) _cinePvPanel.style.display='none'; _blankCinePvWindow(); return; }
-  _ensureCinePvPanel(); _cinePvPanel.style.display='block';
-  if(_cinePvSlider && document.activeElement!==_cinePvSlider && +_cinePvSlider.value!==_cinePvT) _cinePvSlider.value=_cinePvT;
-  if(!_cinePvFrameAt(shot, _cinePvT)) return;
+  _ensureCinePvPanel();
   const popped = !!(_cinePvWin && !_cinePvWin.closed);
-  if(_cinePvFrame) _cinePvFrame.style.display = popped ? 'none' : 'block';   // popped: the video lives in the separate window; keep the header (scrubber) docked
-  if(popped){ _blitCinePvToWindow(); return; }
+  // keep the scrubber in sync with playback — use the slider's OWN document (it lives in the popup while popped)
+  if(_cinePvSlider && _cinePvSlider.ownerDocument && _cinePvSlider.ownerDocument.activeElement!==_cinePvSlider && +_cinePvSlider.value!==_cinePvT) _cinePvSlider.value=_cinePvT;
+  if(!_cinePvFrameAt(shot, _cinePvT)) return;
+  if(popped){ _cinePvPanel.style.display='none'; _blitCinePvToWindow(); return; }   // popped: video + scrubber both live in the separate window
+  _cinePvPanel.style.display='block';
+  if(_cinePvFrame) _cinePvFrame.style.display='block';
   const size=renderer.getSize(new THREE.Vector2());
   const W=Math.max(180, Math.min(320, Math.round(size.x*0.26))), H=Math.round(W*9/16), M=20;
   _cinePvPanel.style.width=W+'px'; _cinePvFrame.style.width=W+'px'; _cinePvFrame.style.height=H+'px';
@@ -17249,24 +17253,31 @@ function _syncCinePvPopBtn(){
   _cinePvPopBtn.textContent = on ? '↙' : '↗';
   _cinePvPopBtn.title = on ? 'Re-dock the camera preview (or just close that window)' : 'Open camera preview in its own window';
 }
+function _redockCineHeader(){ if(_cinePvHeader && _cinePvPanel && _cinePvFrame && _cinePvHeader.parentNode!==_cinePvPanel){ try{ _cinePvPanel.insertBefore(_cinePvHeader, _cinePvFrame); }catch(e){} } }
 function _openCinePvWindow(){
   if(_cinePvWin && !_cinePvWin.closed){ try{ _cinePvWin.focus(); }catch(e){} return; }
-  const w = window.open('', 'breach-cine-preview', 'width=672,height=400,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
+  _ensureCinePvPanel();   // make sure the header exists to move into the popup
+  const w = window.open('', 'breach-cine-preview', 'width=672,height=432,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
   if(!w){ alert('Could not open a separate window — your browser blocked the popup. Allow popups for this page and try again.'); return; }
   try{
-    w.document.open(); w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>BREACH — camera preview</title></head><body style="margin:0;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center;height:100vh;"></body></html>'); w.document.close();
-    const c = w.document.createElement('canvas'); c.width=_CINEPV_RW; c.height=_CINEPV_RH; c.style.cssText='width:100%;height:100%;object-fit:contain;display:block;background:#000;';
+    w.document.open(); w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>BREACH — camera preview</title></head><body></body></html>'); w.document.close();
+    for(const s of document.querySelectorAll('style')){ const ns=w.document.createElement('style'); ns.textContent=s.textContent; w.document.head.appendChild(ns); }   // copy styles so --accent etc. resolve
+    w.document.body.style.cssText='margin:0;background:#05080a;overflow:hidden;height:100vh;display:flex;flex-direction:column;';
+    const c = w.document.createElement('canvas'); c.width=_CINEPV_RW; c.height=_CINEPV_RH; c.style.cssText='flex:1 1 auto;min-height:0;width:100%;object-fit:contain;display:block;background:#000;';
     w.document.body.appendChild(c);
+    const ctrl = w.document.createElement('div'); ctrl.style.cssText='flex:0 0 auto;'; w.document.body.appendChild(ctrl);
     _cinePvWin=w; _cinePvWinCanvas=c; _cinePvWinCtx=c.getContext('2d'); _cinePvBlanked=false;
-    w.addEventListener('beforeunload', ()=>{ _cinePvWin=null; _cinePvWinCanvas=null; _cinePvWinCtx=null; if(_cinePvFrame) _cinePvFrame.style.display='block'; _syncCinePvPopBtn(); });
+    if(_cinePvHeader){ ctrl.appendChild(_cinePvHeader); }   // MOVE the scrubber + buttons into the popup
+    if(_cinePvPanel) _cinePvPanel.style.display='none';     // nothing left in the in-page panel
+    w.addEventListener('beforeunload', ()=>{ _cinePvWin=null; _cinePvWinCanvas=null; _cinePvWinCtx=null; _redockCineHeader(); _syncCinePvPopBtn(); });
     window.addEventListener('beforeunload', ()=>{ try{ w.close(); }catch(e){} }, { once:true });
-  }catch(e){ console.warn('cine preview pop-out failed', e); try{ w.close(); }catch(_){} _cinePvWin=null; _cinePvWinCanvas=null; _cinePvWinCtx=null; }
+  }catch(e){ console.warn('cine preview pop-out failed', e); try{ w.close(); }catch(_){} _cinePvWin=null; _cinePvWinCanvas=null; _cinePvWinCtx=null; _redockCineHeader(); }
   _syncCinePvPopBtn();
 }
 function _closeCinePvWindow(){
   const w=_cinePvWin; _cinePvWin=null; _cinePvWinCanvas=null; _cinePvWinCtx=null;
   if(w){ try{ if(!w.closed) w.close(); }catch(e){} }
-  if(_cinePvFrame) _cinePvFrame.style.display='block';
+  _redockCineHeader();   // bring the scrubber back into the in-page panel
   _syncCinePvPopBtn();
 }
 function _blankCinePvWindow(){
@@ -17295,7 +17306,11 @@ function _blitCinePvToWindow(){
     for(let y=0;y<RH;y++){ const s=(RH-1-y)*rowB, d=y*rowB; dst.set(src.subarray(s, s+rowB), d); }
     _cinePvWinCtx.putImageData(_cinePvImg, 0, 0); _cinePvBlanked=false;
   }catch(e){ /* context loss / readback failure — leave the last frame up */ }
-  renderer.setRenderTarget(null); renderer.shadowMap.autoUpdate=sa;
+  // CRITICAL (build 663): restore the full-screen viewport/scissor we changed for the off-screen render —
+  // otherwise the next main render is clamped to the 640x360 corner and the game window looks "resized".
+  const sz=renderer.getSize(new THREE.Vector2());
+  renderer.setScissorTest(false); renderer.setViewport(0,0,sz.x,sz.y); renderer.setScissor(0,0,sz.x,sz.y); renderer.setRenderTarget(null);
+  renderer.shadowMap.autoUpdate=sa;
   for(const o of hid) o.visible=true; for(const b of sbh) b.visible=true;
 }
 let _shadowDirtyFrames = 2;
