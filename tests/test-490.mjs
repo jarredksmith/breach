@@ -29,8 +29,8 @@ assert(/playFlipbook\('muzzle', from, 0\.7\*boltCfg\.muzzle\)/.test(extractFunct
 
 // --- editor + persistence wiring ---
 assert(/function renderBoltFxPanel\(\)/.test(src), 'editor panel exists');
-assert(/sec\('Enemy gunfire', 'boltfx'/.test(src), 'section registered in the Weapons tab');
-assert(/'object','transform','impactfx','tracerfx','boltfx','crosshair'/.test(src), 'shown in the Weapons (kit) mode');
+assert(/sec\('Enemy gunfire', 'boltfx'/.test(src), 'section registered in the editor');
+assert(/enemies: \['enemies','gizmo','object','transform','boltfx'\]/.test(src), 'shown in the Enemies mode (moved from Weapons in build 647 — it describes enemies, not your kit)');
 assert(/bolt: Object\.assign\(\{\}, boltCfg\)/.test(src), 'serialized with the level');
 assert((src.match(/boltCfg = _sanitizeBolt\(level\.bolt\)/g)||[]).length===2, 'restored in both load paths');
 

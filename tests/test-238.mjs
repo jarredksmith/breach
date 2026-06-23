@@ -32,7 +32,7 @@ assert(!/\bhint\(/.test(niBlock) && !/[^gA-Za-z]host\./.test(niBlock), 'no out-o
 // --- spawns now live on the Enemies tab ---
 assert(/build:\s*\['props','lights','station','player','pstart','extract','turrets'\]/.test(src), 'spawns gone from the build tab (turrets added, build 523)');
 assert(/enemies:\s*\['spawns'\]/.test(src), 'enemies tab owns the spawns target');
-assert(/enemies:\s*\['enemies','gizmo','object','transform'\]/.test(src), 'enemies mode renders the spawn picker, fields, and gizmo sections');
+assert(/enemies:\s*\['enemies','gizmo','object','transform','boltfx'\]/.test(src), 'enemies mode renders the spawn picker, fields, gizmo sections + enemy gunfire FX (build 647)');
 // custom models for keys need no new code: the pickup-model row is generic over kinds
 assert(/const pm = pickupModels\[newPickupKind\] \|\| \(pickupModels\[newPickupKind\]=\{ url:'', scale:1 \}\);/.test(src), 'per-kind model row covers key kinds');
 done();

@@ -14520,7 +14520,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 646 · 2026-06-23';
+const BUILD_VERSION = 'build 647 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18260,9 +18260,9 @@ const PRIM_ICON = {
 const MODE_SECTIONS = {
   build:   ['gizmo','object','material','transform','characters'],
   scene:   ['world','generate','audiozones','deathzones','jumppads','ladders','firezones'],
-  enemies: ['enemies','gizmo','object','transform'],   // spawn points live here now; their picker/fields/gizmo sections come along
+  enemies: ['enemies','gizmo','object','transform','boltfx'],   // spawn points live here now; their picker/fields/gizmo sections come along. enemy gunfire FX (boltfx) moved here in build 647 — it's about enemies, not your weapons
   rules:   ['game','pickups','loot','invitems'],
-  kit:     ['object','transform','impactfx','tracerfx','boltfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; enemy gunfire FX; music/SFX live in Scene
+  kit:     ['object','transform','impactfx','tracerfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; crosshair; music/SFX live in Scene
   files:   ['levelfile','campaign'],
 };
 const MODE_TARGETS = {
