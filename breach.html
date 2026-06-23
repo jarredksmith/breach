@@ -88,6 +88,7 @@
   #editor .edSection.collapsed .edCaret { transform: rotate(-90deg); }
   #editor .edSecBody { padding: 8px 10px; }
   #editor .edSection.collapsed .edSecBody { display: none; }
+  #editor .edSecSub { margin: -2px 0 8px; color: #8fc7b6; font: 400 10.5px/1.4 ui-monospace, monospace; letter-spacing: 0.2px; opacity: 0.85; }
   #editor #libGrid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; max-height: 132px; overflow-y: auto; }
   #editor button.libChip {
     flex: 0 0 auto; padding: 5px 9px; font-size: 11px; border-radius: 12px;
@@ -14520,7 +14521,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 647 · 2026-06-23';
+const BUILD_VERSION = 'build 648 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18265,6 +18266,33 @@ const MODE_SECTIONS = {
   kit:     ['object','transform','impactfx','tracerfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; crosshair; music/SFX live in Scene
   files:   ['levelfile','campaign'],
 };
+// Plain-language one-liner shown under each section header (build 648). Keyed by the section's data-sec key
+// so renaming a display title never desyncs it. Injected in buildEditorPanel.
+const SEC_SUB = {
+  gizmo:      'Drag the on-screen handles to move, rotate or scale the selection.',
+  object:     'Swap the model, search for props, or set up animations.',
+  material:   'Colour, texture & glow of the selected shape.',
+  transform:  'Type exact position, rotation & scale values.',
+  world:      'Terrain, sky, fog, gravity & ambient audio for the whole level.',
+  generate:   'Procedurally build a starting layout you can then edit.',
+  enemies:    'Enemy types, counts & difficulty for this level.',
+  boltfx:     'How enemy gunfire looks: bolt tip, streak, trail & muzzle flash.',
+  game:       'Match type, wave pacing & win conditions.',
+  pickups:    'Pads that grant ammo, health & power-ups.',
+  loot:       'What enemies and crates drop when destroyed.',
+  invitems:   'Define carryable items and what using them does.',
+  audiozones: 'Positional sound that plays while you stand inside a radius.',
+  deathzones: 'Areas that kill on contact — pits, lava, out-of-bounds.',
+  jumppads:   'Launch the player up or forward on contact.',
+  ladders:    'Climbable vertical volumes (W up / S down, jump to hop off).',
+  firezones:  'Place fire & smoke emitters in the world.',
+  impactfx:   'Sparks, marks & debris where YOUR shots land.',
+  tracerfx:   'The streak your own gunfire leaves in the air.',
+  crosshair:  'Reticle shape, size & colour.',
+  characters: 'Player & enemy character roster, models and animation slots.',
+  levelfile:  'Save, share, export or import this level.',
+  campaign:   'Chain levels together into a campaign.',
+};
 const MODE_TARGETS = {
   build:   ['props','lights','station','player','pstart','extract','turrets'],
   scene:   [],
@@ -19322,14 +19350,14 @@ function buildEditorPanel(){
     + '<div class="row2" id="edView" style="margin-bottom:10px"></div>'
     + '<div class="edModes" id="edModes"></div>'
     + '<div class="tabs" id="edTabs"></div>'
-    + sec('Gizmo', 'gizmo', '<div id="edGizmo"></div>')
+    + sec('Handles', 'gizmo', '<div id="edGizmo"></div>')
     + sec('Object &amp; selection', 'object', '<div id="edShapes"></div><div id="edModels"></div><div id="edUrl"></div><div id="edPicker"></div><div id="edAnim"></div><div id="edLibrary"></div>')
     + sec('Material', 'material', '<div id="edMaterial"></div>')
     + sec('Transform', 'transform', '<div id="edFields"></div>')
-    + sec('World', 'world', '<div id="edWorld"></div>')
+    + sec('Environment', 'world', '<div id="edWorld"></div>')
     + sec('Auto-generate', 'generate', '<div id="edGenerate"></div>')
     + sec('Enemies', 'enemies', '<div id="edEnemies"></div>')
-    + sec('Game / waves', 'game', '<div id="edGame"></div>')
+    + sec('Waves &amp; objectives', 'game', '<div id="edGame"></div>')
     + sec('Pickups', 'pickups', '<div id="edPickups"></div>')
     + sec('Loot', 'loot', '<div id="edLoot"></div>')
     + sec('Inventory items', 'invitems', '<div id="edInvItems"></div>')
@@ -19338,8 +19366,8 @@ function buildEditorPanel(){
     + sec('Jump pads', 'jumppads', '<div id="edJumpPads"></div>')
     + sec('Ladders', 'ladders', '<div id="edLadders"></div>')
     + sec('Fire zones', 'firezones', '<div id="edFireZones"></div>')
-    + sec('Impact FX', 'impactfx', '<div id="edImpactFx"></div>')
-    + sec('Bullet streak', 'tracerfx', '<div id="edTracerFx"></div>')
+    + sec('Bullet impacts', 'impactfx', '<div id="edImpactFx"></div>')
+    + sec('Bullet tracer', 'tracerfx', '<div id="edTracerFx"></div>')
     + sec('Enemy gunfire', 'boltfx', '<div id="edBoltFx"></div>')
     + sec('Crosshair', 'crosshair', '<div id="edCrosshair"></div>')
     + sec('Characters', 'characters', '<div id="edCharRoster"></div>')
@@ -19443,6 +19471,11 @@ function buildEditorPanel(){
   const defaultCollapsed = { material:true, loot:true, sounds:true, campaign:true };   // collapse secondary sections; primary ones (incl. Enemies in its own mode) start open
   p.querySelectorAll('.edSection').forEach(s=>{
     const k = s.dataset.sec;
+    // one-line plain-language subtitle under each header (build 648): explains the section to a first-timer.
+    // Injected as a sibling BEFORE the render host divs so the per-section render functions (which only replace
+    // their own #ed* host) never wipe it.
+    const subTxt = SEC_SUB[k];
+    if(subTxt){ const body=s.querySelector('.edSecBody'); if(body && !body.querySelector('.edSecSub')){ const sub=document.createElement('div'); sub.className='edSecSub'; sub.textContent=subTxt; body.insertBefore(sub, body.firstChild); } }
     const collapsed = (k in secState) ? secState[k]===true : !!defaultCollapsed[k];
     if(collapsed) s.classList.add('collapsed');
     s.querySelector('.edSecHead').onclick = ()=>{
