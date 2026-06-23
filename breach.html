@@ -88,6 +88,7 @@
   #editor .edSection.collapsed .edCaret { transform: rotate(-90deg); }
   #editor .edSecBody { padding: 8px 10px; }
   #editor .edSection.collapsed .edSecBody { display: none; }
+  #editor .edSecSub { margin: -2px 0 8px; color: #8fc7b6; font: 400 10.5px/1.4 ui-monospace, monospace; letter-spacing: 0.2px; opacity: 0.85; }
   #editor #libGrid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; max-height: 132px; overflow-y: auto; }
   #editor button.libChip {
     flex: 0 0 auto; padding: 5px 9px; font-size: 11px; border-radius: 12px;
@@ -14520,7 +14521,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 646 · 2026-06-23';
+const BUILD_VERSION = 'build 651 · 2026-06-23';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18240,6 +18241,17 @@ let editorActive = 'gun';
 const EDITOR_MODES = ['build','scene','enemies','rules','kit','files'];
 const MODE_LABEL = { build:'Build', scene:'World', enemies:'Enemies', rules:'Gameplay', kit:'Weapons', files:'Save' };   // user-facing names; internal mode keys unchanged so saved prefs/tests keep working
 const MODE_COLOR = { build:'var(--accent)', scene:'#5db4ff', enemies:'#ff6b8a', rules:'#ffd166', kit:'#ff9b5b', files:'#b69cff' };   // per-mode accent so the buttons read as distinct sections
+// Compact, mode-aware top hint (build 651) — replaces one dense always-on paragraph. Tells a newcomer what
+// THIS mode is for + the one or two gestures that matter here. Universal shortcuts trail every line.
+const MODE_HINT = {
+  build:   'Place & shape the world. <b>+</b> adds objects; click to select (<b>Shift+click</b>, or drag in <b>Top view</b> to marquee-select props), then <b>Move / Rotate / Scale</b> with the handles or type values.',
+  scene:   'Set the stage: terrain, sky, fog, and placeable <b>Zones</b>. Use <b>+ ▸ Zone</b> to drop a volume.',
+  enemies: 'Author who you fight: drop spawn points with <b>+ ▸ Enemy spawn</b>, then tune types, counts & their gunfire look.',
+  rules:   'Match flow: waves & win conditions, plus the pickups, loot and items players can grab.',
+  kit:     'Your weapons: pick a tab (Gun / Aim / Grenade) to pose the viewmodel; tune bullet impacts, tracer & crosshair below.',
+  files:   'Save, share or export this level, and chain levels into a campaign.',
+};
+const HINT_SHORTCUTS = ' <span style="opacity:.7">·  <b>Shift+D</b> duplicate · <b>Alt+drag</b> a prop to clone · <b>Del</b> remove · <b>P</b> close · drag the edge to resize.</span>';
 function _hexRgba(hex,a){ const nn=parseInt(hex.replace('#',''),16); return 'rgba('+((nn>>16)&255)+','+((nn>>8)&255)+','+(nn&255)+','+a+')'; }
 const SHOW_MODEL_LIBRARY = false;   // hardcoded model-library chips hidden for now (to be rebuilt); flip true to restore
 const _svgIcon = (inner)=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+inner+'</svg>';
@@ -18259,11 +18271,38 @@ const PRIM_ICON = {
 };
 const MODE_SECTIONS = {
   build:   ['gizmo','object','material','transform','characters'],
-  scene:   ['world','generate','audiozones','deathzones','jumppads','ladders','firezones'],
-  enemies: ['enemies','gizmo','object','transform'],   // spawn points live here now; their picker/fields/gizmo sections come along
+  scene:   ['world','generate','zones'],   // the 5 placeable volumes are grouped under one 'zones' section with a type picker (build 649)
+  enemies: ['enemies','gizmo','object','transform','boltfx'],   // spawn points live here now; their picker/fields/gizmo sections come along. enemy gunfire FX (boltfx) moved here in build 647 — it's about enemies, not your weapons
   rules:   ['game','pickups','loot','invitems'],
-  kit:     ['object','transform','impactfx','tracerfx','boltfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; enemy gunfire FX; music/SFX live in Scene
+  kit:     ['object','transform','impactfx','tracerfx','crosshair'],   // 'object' carries the weapon model import + per-weapon shoot sound; impact/streak FX; crosshair; music/SFX live in Scene
   files:   ['levelfile','campaign'],
+};
+// Plain-language one-liner shown under each section header (build 648). Keyed by the section's data-sec key
+// so renaming a display title never desyncs it. Injected in buildEditorPanel.
+const SEC_SUB = {
+  gizmo:      'Drag the on-screen handles to move, rotate or scale the selection.',
+  object:     'Swap the model, search for props, or set up animations.',
+  material:   'Colour, texture & glow of the selected shape.',
+  transform:  'Type exact position, rotation & scale values.',
+  world:      'Terrain, sky, fog, gravity & ambient audio for the whole level.',
+  generate:   'Procedurally build a starting layout you can then edit.',
+  enemies:    'Enemy types, counts & difficulty for this level.',
+  boltfx:     'How enemy gunfire looks: bolt tip, streak, trail & muzzle flash.',
+  game:       'Match type, wave pacing & win conditions.',
+  pickups:    'Pads that grant ammo, health & power-ups.',
+  loot:       'What enemies and crates drop when destroyed.',
+  invitems:   'Define carryable items and what using them does.',
+  audiozones: 'Positional sound that plays while you stand inside a radius.',
+  deathzones: 'Areas that kill on contact — pits, lava, out-of-bounds.',
+  jumppads:   'Launch the player up or forward on contact.',
+  ladders:    'Climbable vertical volumes (W up / S down, jump to hop off).',
+  firezones:  'Place fire & smoke emitters in the world.',
+  impactfx:   'Sparks, marks & debris where YOUR shots land.',
+  tracerfx:   'The streak your own gunfire leaves in the air.',
+  crosshair:  'Reticle shape, size & colour.',
+  characters: 'Player & enemy character roster, models and animation slots.',
+  levelfile:  'Save, share, export or import this level.',
+  campaign:   'Chain levels together into a campaign.',
 };
 const MODE_TARGETS = {
   build:   ['props','lights','station','player','pstart','extract','turrets'],
@@ -18277,6 +18316,30 @@ const TARGET_MODE = {};   // reverse: which mode owns each target tab
 for(const _m of EDITOR_MODES) for(const _t of MODE_TARGETS[_m]) TARGET_MODE[_t]=_m;
 let editorMode = 'build';
 try{ const _sm = localStorage.getItem('breach_editor_mode'); if(_sm && EDITOR_MODES.indexOf(_sm)>=0) editorMode = _sm; }catch(e){}
+// Which placeable-volume tool is showing inside the grouped 'Zones' section (build 649).
+const ZONE_TYPES = [['audiozones','\ud83d\udd0a','Audio'],['deathzones','\u2620','Death'],['jumppads','\u2b06','Jump'],['ladders','\ud83e\ude9c','Ladder'],['firezones','\ud83d\udd25','Fire']];
+const ZONE_HOST = { audiozones:'edAudioZones', deathzones:'edDeathZones', jumppads:'edJumpPads', ladders:'edLadders', firezones:'edFireZones' };
+let activeZoneType = 'audiozones';
+try{ const _z = localStorage.getItem('breach_editor_zone'); if(_z && ZONE_HOST[_z]) activeZoneType = _z; }catch(e){}
+// Show only the selected zone tool's host inside the grouped section.
+function applyZoneVisibility(){
+  if(!editorEl) return;
+  for(const k in ZONE_HOST){ const el=document.getElementById(ZONE_HOST[k]); if(el) el.style.display = (k===activeZoneType)?'':'none'; }
+}
+// Segmented picker at the top of the Zones section: pick which volume type you're placing. Shows that
+// type's plain-language description underneath (reusing SEC_SUB), then reveals only its tools.
+function renderZonePicker(){
+  const host=document.getElementById('edZonePicker'); if(!host) return; host.innerHTML='';
+  const bar=document.createElement('div'); bar.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;';
+  for(const [key,icon,label] of ZONE_TYPES){
+    const on=activeZoneType===key; const b=document.createElement('button'); b.textContent=icon+' '+label;
+    b.style.cssText='flex:1 1 auto;padding:5px 6px;font-size:11px;border-radius:5px;cursor:pointer;border:1px solid '+(on?'#5db4ff':'rgba(93,180,255,0.25)')+';background:'+(on?'rgba(93,180,255,0.22)':'transparent')+';color:'+(on?'#eaf6ff':'#9fc6e6')+';';
+    b.onclick=()=>{ activeZoneType=key; try{ localStorage.setItem('breach_editor_zone', key); }catch(e){} renderZonePicker(); applyZoneVisibility(); };
+    bar.appendChild(b);
+  }
+  host.appendChild(bar);
+  const sub=document.createElement('div'); sub.className='edSecSub'; sub.style.margin='0 0 4px'; sub.textContent=SEC_SUB[activeZoneType]||''; host.appendChild(sub);
+}
 // Show only this mode's target-tabs + sections; hide the rest. Highlights the active mode button.
 function applyEditorMode(){
   if(!editorEl) return;
@@ -18286,6 +18349,8 @@ function applyEditorMode(){
   editorEl.querySelectorAll('#edTabs .tab').forEach(t=>{ t.style.display = (tgts.indexOf(t.dataset.key)>=0) ? '' : 'none'; });
   const tabRow = editorEl.querySelector('#edTabs'); if(tabRow) tabRow.style.display = tgts.length ? 'flex' : 'none';   // no target picker in Scene/Rules/Save
   const view = editorEl.querySelector('#edView'); if(view) view.style.display = 'flex';   // global view toolbar (sits above the tabs)
+  const hint = editorEl.querySelector('#edHint'); if(hint) hint.innerHTML = (MODE_HINT[editorMode]||'') + HINT_SHORTCUTS;   // build 651: mode-aware one-liner
+
   editorEl.querySelectorAll('#edModes .edMode').forEach(b=>{
     const c = MODE_COLOR[b.dataset.mode] || 'var(--accent)', on = b.dataset.mode===editorMode;
     b.classList.toggle('active', on);
@@ -19317,29 +19382,31 @@ function buildEditorPanel(){
       + '<button id="edDock" title="Move panel to the other side">\u21c4</button>'
       + '<button id="edCollapse" title="Collapse panel">\u2304</button>'
     + '</div>'
-    + '<div class="hint">Click an object to select it. <b>Shift+click</b> props to multi-select. In <b>Top view</b>, <b>drag</b> empty space to marquee-select props (Shift adds); pan with <b>right/middle-drag</b>. Use <b>Move / Rotate / Scale</b> + the handles, or type values. <b>Shift+D</b> duplicates (or <b>Alt+drag</b> a prop to clone it in place), <b>Delete</b> removes. Drag the left edge to resize. Press <b>P</b> to close.</div>'
+    + '<div class="hint" id="edHint"></div>'
     + '<div class="row2" style="margin:0 0 8px"><button id="edPlay" style="background:var(--accent);color:#05070a;font-weight:700;border:none">▶ Play level</button><button id="edMenu" style="background:rgba(255,140,60,.14);color:#ffd9a8;font-weight:700;border:1px solid rgba(255,150,70,.55)">⌂ Main menu</button></div>'
     + '<div class="row2" id="edView" style="margin-bottom:10px"></div>'
     + '<div class="edModes" id="edModes"></div>'
     + '<div class="tabs" id="edTabs"></div>'
-    + sec('Gizmo', 'gizmo', '<div id="edGizmo"></div>')
+    + sec('Handles', 'gizmo', '<div id="edGizmo"></div>')
     + sec('Object &amp; selection', 'object', '<div id="edShapes"></div><div id="edModels"></div><div id="edUrl"></div><div id="edPicker"></div><div id="edAnim"></div><div id="edLibrary"></div>')
     + sec('Material', 'material', '<div id="edMaterial"></div>')
     + sec('Transform', 'transform', '<div id="edFields"></div>')
-    + sec('World', 'world', '<div id="edWorld"></div>')
+    + sec('Environment', 'world', '<div id="edWorld"></div>')
     + sec('Auto-generate', 'generate', '<div id="edGenerate"></div>')
     + sec('Enemies', 'enemies', '<div id="edEnemies"></div>')
-    + sec('Game / waves', 'game', '<div id="edGame"></div>')
+    + sec('Waves &amp; objectives', 'game', '<div id="edGame"></div>')
     + sec('Pickups', 'pickups', '<div id="edPickups"></div>')
     + sec('Loot', 'loot', '<div id="edLoot"></div>')
     + sec('Inventory items', 'invitems', '<div id="edInvItems"></div>')
-    + sec('Audio zones', 'audiozones', '<div id="edAudioZones"></div>')
-    + sec('Death zones', 'deathzones', '<div id="edDeathZones"></div>')
-    + sec('Jump pads', 'jumppads', '<div id="edJumpPads"></div>')
-    + sec('Ladders', 'ladders', '<div id="edLadders"></div>')
-    + sec('Fire zones', 'firezones', '<div id="edFireZones"></div>')
-    + sec('Impact FX', 'impactfx', '<div id="edImpactFx"></div>')
-    + sec('Bullet streak', 'tracerfx', '<div id="edTracerFx"></div>')
+    + sec('Zones', 'zones',
+          '<div id="edZonePicker"></div>'
+        + '<div id="edAudioZones" class="zoneHost" data-zone="audiozones"></div>'
+        + '<div id="edDeathZones" class="zoneHost" data-zone="deathzones"></div>'
+        + '<div id="edJumpPads" class="zoneHost" data-zone="jumppads"></div>'
+        + '<div id="edLadders" class="zoneHost" data-zone="ladders"></div>'
+        + '<div id="edFireZones" class="zoneHost" data-zone="firezones"></div>')
+    + sec('Bullet impacts', 'impactfx', '<div id="edImpactFx"></div>')
+    + sec('Bullet tracer', 'tracerfx', '<div id="edTracerFx"></div>')
     + sec('Enemy gunfire', 'boltfx', '<div id="edBoltFx"></div>')
     + sec('Crosshair', 'crosshair', '<div id="edCrosshair"></div>')
     + sec('Characters', 'characters', '<div id="edCharRoster"></div>')
@@ -19384,15 +19451,27 @@ function buildEditorPanel(){
       if(typeof ResizeObserver!=='undefined'){ try{ new ResizeObserver(placeFab).observe(ed); }catch(e){} }
       if(dk){ const _dock=dk.onclick; dk.onclick=()=>{ if(_dock) _dock(); placeFab(); }; }
       const jump=(mode,target)=>{ if(target) editorActive=target; setEditorMode(mode, !!target); };
+      // build 650: the + menu is the ONE place to add anything placeable. Each entry jumps to the owning
+      // mode/target/zone-tool first so the new thing lands in view with its editor already showing.
+      const addZone=(type)=>{ jump('scene');
+        activeZoneType=type; if(typeof applyZoneVisibility==='function') applyZoneVisibility(); if(typeof renderZonePicker==='function') renderZonePicker();
+        if(type==='audiozones'){ pushUndoSnapshot(); audioZones.push({ x:+player.pos.x.toFixed(2), z:+player.pos.z.toFixed(2), r:14, url:'', vol:0.8, loop:true }); editorActive='audiozones'; refreshAudioZoneMarkers(); if(typeof renderAudioZonesPanel==='function') renderAudioZonesPanel(); }
+        else if(type==='deathzones'){ if(typeof addDeathZone==='function') addDeathZone(); }
+        else if(type==='jumppads'){ if(typeof addJumpPad==='function') addJumpPad(); }
+        else if(type==='ladders'){ if(typeof addLadder==='function') addLadder(); }
+        else if(type==='firezones'){ if(typeof addFireZone==='function') addFireZone(); }
+      };
+      const ZONE_ADD=[['audiozones','\ud83d\udd0a','Audio zone'],['deathzones','\u2620','Death zone'],['jumppads','\u2b06','Jump pad'],['ladders','\ud83e\ude9c','Ladder'],['firezones','\ud83d\udd25','Fire zone']];
       const ADD_ITEMS=[
         ['\u25a0 Box',      ()=>{ jump('build','props');   addSceneProp('box'); }],
         ['\u25cf Sphere',   ()=>{ jump('build','props');   addSceneProp('sphere'); }],
         ['\u25ac Cylinder', ()=>{ jump('build','props');   addSceneProp('cylinder'); }],
         ['\u25b2 Cone',     ()=>{ jump('build','props');   addSceneProp('cone'); }],
         ['\ud83d\udca1 Light',       ()=>{ jump('build','lights');  addSceneLight(); }],
+        ['\ud83d\udee1 Turret',      ()=>{ jump('build','turrets'); if(typeof addSceneTurret==='function') addSceneTurret(); }],
         ['\ud83d\udc7e Enemy spawn', ()=>{ jump('enemies','spawns'); addSceneSpawn(); }],
         ['\u25c6 Pickup pad \u25b8',  '_pickupSub'],
-        ['\ud83d\udd0a Audio zone',  ()=>{ jump('scene'); pushUndoSnapshot(); audioZones.push({ x:+player.pos.x.toFixed(2), z:+player.pos.z.toFixed(2), r:14, url:'', vol:0.8, loop:true }); refreshAudioZoneMarkers(); if(typeof renderAudioZonesPanel==='function') renderAudioZonesPanel(); }],   // the zones panel has its own renderer — renderEditorFields doesn't repaint it
+        ['\u25c8 Zone \u25b8',        '_zoneSub'],
       ];
       const menuItem=(label, on)=>{ const it=document.createElement('div'); it.textContent=label;
         it.style.cssText='padding:6px 10px;cursor:pointer;border-radius:4px;font:12px ui-monospace,monospace;color:#cfeee2;';
@@ -19403,6 +19482,7 @@ function buildEditorPanel(){
       const buildMain=()=>{ addMenu.innerHTML='';
         for(const [label, act] of ADD_ITEMS){
           if(act==='_pickupSub'){ menuItem(label, buildPickups); continue; }
+          if(act==='_zoneSub'){ menuItem(label, buildZones); continue; }
           menuItem(label, ()=>{ addMenu.style.display='none'; try{ act(); }catch(e){ console.warn('add failed', e); } });
         } };
       const buildPickups=()=>{ addMenu.innerHTML='';   // second level: pick which pad to drop
@@ -19411,6 +19491,10 @@ function buildEditorPanel(){
           const pk=POWERUP_KINDS[k];
           menuItem((pk.key?'\ud83d\udd11 ':'\u25c6 ')+(pk.key?keyDisplayName(pk.key):pk.label), ()=>{ addMenu.style.display='none'; newPickupKind=k; jump('rules'); addPickupSpot(k); });
         } };
+      const buildZones=()=>{ addMenu.innerHTML='';   // second level: pick which volume to drop
+        menuItem('\u2039 Back', buildMain);
+        for(const [type,icon,label] of ZONE_ADD){ menuItem(icon+' '+label, ()=>{ addMenu.style.display='none'; addZone(type); }); }
+      };
       buildMain();
       addBtn.onclick=(e)=>{ e.stopPropagation(); const opening = addMenu.style.display==='none'; if(opening) buildMain(); addMenu.style.display = opening ? 'block' : 'none'; };
       document.addEventListener('click', ()=>{ addMenu.style.display='none'; });
@@ -19424,6 +19508,8 @@ function buildEditorPanel(){
   if(typeof renderLaddersPanel==='function') renderLaddersPanel();
   if(typeof refreshLadderMarkers==='function') refreshLadderMarkers();   // build 645: show ladder markers while editing
   if(typeof renderFireZonesPanel==='function') renderFireZonesPanel();
+  if(typeof renderZonePicker==='function') renderZonePicker();        // build 649: the grouped Zones type picker
+  if(typeof applyZoneVisibility==='function') applyZoneVisibility();   // ...and reveal only the active zone tool
   if(typeof renderCharRosterPanel==='function') renderCharRosterPanel();
   if(typeof renderImpactFxPanel==='function') renderImpactFxPanel();
   if(typeof renderTracerFxPanel==='function') renderTracerFxPanel();
@@ -19440,9 +19526,16 @@ function buildEditorPanel(){
   })();
   // collapsible section headers (state persists in localStorage so it survives reopening the editor)
   let secState = {}; try{ secState = JSON.parse(localStorage.getItem('breach_editor_sections')||'{}') || {}; }catch(e){}
-  const defaultCollapsed = { material:true, loot:true, sounds:true, campaign:true };   // collapse secondary sections; primary ones (incl. Enemies in its own mode) start open
+  // collapse secondary sections by default so each mode opens to its primary panel, not a wall (build 651);
+  // a user's own expand/collapse choices (secState) still override these.
+  const defaultCollapsed = { material:true, loot:true, sounds:true, campaign:true, generate:true, invitems:true, impactfx:true, tracerfx:true, crosshair:true, boltfx:true, characters:true };
   p.querySelectorAll('.edSection').forEach(s=>{
     const k = s.dataset.sec;
+    // one-line plain-language subtitle under each header (build 648): explains the section to a first-timer.
+    // Injected as a sibling BEFORE the render host divs so the per-section render functions (which only replace
+    // their own #ed* host) never wipe it.
+    const subTxt = SEC_SUB[k];
+    if(subTxt){ const body=s.querySelector('.edSecBody'); if(body && !body.querySelector('.edSecSub')){ const sub=document.createElement('div'); sub.className='edSecSub'; sub.textContent=subTxt; body.insertBefore(sub, body.firstChild); } }
     const collapsed = (k in secState) ? secState[k]===true : !!defaultCollapsed[k];
     if(collapsed) s.classList.add('collapsed');
     s.querySelector('.edSecHead').onclick = ()=>{
