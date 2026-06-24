@@ -21,7 +21,7 @@ assert(/if\(gameCfg\.unarmed && !gameCfg\.allowPickup && key!=='hands' && !\(WEA
 // --- procedural first-person fists + punch lunge ---
 assert(/function _buildFists\(\)\{/.test(src) && /function _setFistsVisible\(v\)\{/.test(src) && /function _punchFists\(\)\{/.test(src) && /function _animFists\(\)\{/.test(src), 'fist viewmodel + punch helpers exist');
 const sw = extractFunction('showWeaponModel');
-assert(/const isFists = \(key==='hands' \|\| \(WEAPONS\[key\] && WEAPONS\[key\]\.fists\)\);/.test(sw), 'showWeaponModel swaps to the fists viewmodel');
+assert(/const isFists = !\(WEAPONS\[key\] && WEAPONS\[key\]\.model\) && \(key==='hands' \|\| \(WEAPONS\[key\] && WEAPONS\[key\]\.fists\)\);/.test(sw), 'showWeaponModel swaps to the fists viewmodel (unless a custom model overrides it)');
 assert(/if\(isFists\)\{[\s\S]*?gunModel=null; sight=null;[\s\S]*?return; \}/.test(sw), 'fists hide every gun model');
 const ma = extractFunction('meleeAttack');
 assert(/if\(wep && wep\.fists && typeof _punchFists==='function'\) _punchFists\(\);/.test(ma), 'a fist melee triggers the punch lunge');
