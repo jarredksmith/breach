@@ -12129,6 +12129,7 @@ function loadLevelFromNet(level){
   tracerCfg = _sanitizeTracer(level.tracer); if(typeof renderTracerFxPanel==='function') renderTracerFxPanel();
   boltCfg = _sanitizeBolt(level.bolt); if(typeof renderBoltFxPanel==='function') renderBoltFxPanel();
   hudCfg = _sanitizeHud(level.hud); if(typeof applyHudCfg==='function') applyHudCfg(); if(typeof renderHudPanel==='function') renderHudPanel();   // build 665: per-level HUD theme
+  radialCfg = _sanitizeRadial(level.radial); if(typeof renderBuildMenuPanel==='function') renderBuildMenuPanel();   // build 671: per-level build menu
   charRoster = Array.isArray(level.roster) ? level.roster.map(_sanitizeCharCfg) : []; if(typeof renderCharRosterPanel==='function') renderCharRosterPanel();
   if(level.dmgNum){ const d=level.dmgNum; dmgNumCfg.on = d.on!==false; if(d.size) dmgNumCfg.size=+d.size; if(d.hit) dmgNumCfg.hitColor=d.hit; if(d.kill) dmgNumCfg.killColor=d.kill; }
   if(level.pstart){ playerSpawn.x=level.pstart.x||0; playerSpawn.z=level.pstart.z||0; playerSpawn.y=level.pstart.y||0; playerSpawn.yaw=level.pstart.yaw||0; refreshPlayerSpawnMarker(); }
@@ -14697,7 +14698,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 670 · 2026-06-23';
+const BUILD_VERSION = 'build 671 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15386,21 +15387,43 @@ function tickGrabHint(dt){
 // ---------- Radial deploy menu: hold Tab to open a wheel of buildable props; aim a wedge + click (or
 // release Tab) to spawn it in front of you. Spawned props are dynamic, so they ride the prop reconciler
 // and sync to co-op automatically (host simulates the physics). ----------
-const RADIAL_ITEMS=[
-  {src:'box',     exp:false, icon:'\ud83d\udce6', label:'Crate'},
-  {src:'cylinder',exp:false, icon:'\ud83e\ude92', label:'Barrel'},
-  {src:'sphere',  exp:false, icon:'\u26aa',       label:'Ball'},
-  {src:'cone',    exp:false, icon:'\ud83d\udd3a', label:'Cone'},
-  {src:'cylinder',exp:true,  icon:'\ud83d\udca5', label:'Explosive'},
+// build 671: the in-game radial Deploy menu is now per-level configurable. Each slot can be a built-in shape OR
+// a custom model URL, with its own colour / texture / scale / explosive / label-icon. Deployed props already
+// sync to all players (the prop reconciler broadcasts them with their material), so a creator's custom build
+// kit is shared in multiplayer. Serialized with the level.
+const RADIAL_PRIMS = ['box','cylinder','sphere','cone'];
+const DEFAULT_RADIAL = [
+  { src:'box',      label:'Crate',     icon:'\ud83d\udce6', exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cylinder', label:'Barrel',    icon:'\ud83e\ude92', exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'sphere',   label:'Ball',      icon:'\u26aa',       exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cone',     label:'Cone',      icon:'\ud83d\udd3a', exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cylinder', label:'Explosive', icon:'\ud83d\udca5', exp:true,  col:0xc23b22, tex:'', scale:0.9 },
 ];
+function _sanitizeRadial(arr){
+  if(!Array.isArray(arr) || !arr.length) return DEFAULT_RADIAL.map(s=>Object.assign({}, s));
+  const out=[];
+  for(const s of arr.slice(0,8)){ if(!s || typeof s!=='object') continue;
+    out.push({
+      src:   (typeof s.src==='string' && s.src) ? s.src : 'box',
+      label: (typeof s.label==='string' && s.label) ? s.label.slice(0,18) : 'Prop',
+      icon:  (typeof s.icon==='string' && s.icon) ? s.icon.slice(0,4) : '\u25c6',
+      exp:   !!s.exp,
+      col:   (s.col!=null && isFinite(+s.col)) ? ((+s.col)&0xffffff) : null,
+      tex:   (typeof s.tex==='string') ? s.tex : '',
+      scale: Math.max(0.2, Math.min(4, isNaN(+s.scale)?0.9:+s.scale)),
+    });
+  }
+  return out.length ? out : DEFAULT_RADIAL.map(s=>Object.assign({}, s));
+}
+let radialCfg = _sanitizeRadial(savedLevel && savedLevel.radial);
 let radialOpen=false, radialSel=-1, radialCx=0, radialCy=0, _deployCD=0;
 const RADIAL_R=120, RADIAL_DEAD=26;
 function openRadial(){
   if(!gameOn || editorOpen || shopOpen || paused || duelDead || radialOpen) return;
   radialOpen=true; radialCx=0; radialCy=0; radialSel=-1;
   const host=document.getElementById('radialRing');
-  if(host){ host.innerHTML=''; const N=RADIAL_ITEMS.length;
-    RADIAL_ITEMS.forEach((it,i)=>{ const a=(-90 + i*(360/N))*Math.PI/180, x=Math.cos(a)*RADIAL_R, y=Math.sin(a)*RADIAL_R;
+  if(host){ host.innerHTML=''; const N=radialCfg.length;
+    radialCfg.forEach((it,i)=>{ const a=(-90 + i*(360/N))*Math.PI/180, x=Math.cos(a)*RADIAL_R, y=Math.sin(a)*RADIAL_R;
       const d=document.createElement('div'); d.className='radItem'; d.dataset.i=i; d.style.left='calc(50% + '+x+'px)'; d.style.top='calc(50% + '+y+'px)';
       d.innerHTML='<div class="radIcon">'+it.icon+'</div><div class="radName">'+it.label+'</div>'; host.appendChild(d); });
   }
@@ -15410,40 +15433,43 @@ function openRadial(){
 function closeRadial(deploy){
   if(!radialOpen) return; radialOpen=false;
   const r=document.getElementById('radial'); if(r) r.style.display='none';
-  if(deploy && radialSel>=0){ const it=RADIAL_ITEMS[radialSel]; deployProp(it.src, it.exp); }
+  if(deploy && radialSel>=0 && radialCfg[radialSel]){ deployProp(radialCfg[radialSel]); }
   radialSel=-1;
 }
 function radialMove(dx,dy){
   radialCx=Math.max(-RADIAL_R*1.3, Math.min(RADIAL_R*1.3, radialCx+dx*0.6));
   radialCy=Math.max(-RADIAL_R*1.3, Math.min(RADIAL_R*1.3, radialCy+dy*0.6));
   if(Math.hypot(radialCx,radialCy)<RADIAL_DEAD){ radialSel=-1; }
-  else { const ang=Math.atan2(radialCy,radialCx), N=RADIAL_ITEMS.length; let best=-1,bd=1e9;
+  else { const ang=Math.atan2(radialCy,radialCx), N=radialCfg.length; let best=-1,bd=1e9;
     for(let i=0;i<N;i++){ const a=(-90+i*(360/N))*Math.PI/180; let dd=Math.abs(((ang-a+Math.PI*3)%(Math.PI*2))-Math.PI); if(dd<bd){ bd=dd; best=i; } } radialSel=best; }
   updateRadialSel();
 }
 function updateRadialSel(){
   const cur=document.getElementById('radialCursor'); if(cur){ cur.style.left='calc(50% + '+radialCx+'px)'; cur.style.top='calc(50% + '+radialCy+'px)'; }
   const host=document.getElementById('radialRing'); if(host){ for(const el of host.children) el.classList.toggle('hot', +el.dataset.i===radialSel); }
-  const lab=document.getElementById('radialLabel'); if(lab) lab.textContent = radialSel>=0 ? RADIAL_ITEMS[radialSel].label : 'Deploy';
+  const lab=document.getElementById('radialLabel'); if(lab) lab.textContent = radialSel>=0 ? radialCfg[radialSel].label : 'Deploy';
 }
 // Gamepad: set the radial selection directly from a stick's position (vs the mouse's accumulated delta).
 function radialStick(x,y){
   radialCx=Math.max(-RADIAL_R*1.3, Math.min(RADIAL_R*1.3, x*RADIAL_R*1.25));
   radialCy=Math.max(-RADIAL_R*1.3, Math.min(RADIAL_R*1.3, y*RADIAL_R*1.25));
   if(Math.hypot(radialCx,radialCy)<RADIAL_DEAD) radialSel=-1;
-  else { const ang=Math.atan2(radialCy,radialCx), N=RADIAL_ITEMS.length; let best=-1,bd=1e9;
+  else { const ang=Math.atan2(radialCy,radialCx), N=radialCfg.length; let best=-1,bd=1e9;
     for(let i=0;i<N;i++){ const a=(-90+i*(360/N))*Math.PI/180; let dd=Math.abs(((ang-a+Math.PI*3)%(Math.PI*2))-Math.PI); if(dd<bd){ bd=dd; best=i; } } radialSel=best; }
   updateRadialSel();
 }
-function deployProp(src, exp){
+function deployProp(slot){
+  if(!slot) return;
   if(!gameOn || editorOpen || shopOpen || paused || duelDead || _deployCD>0) return; _deployCD=0.5;
   const fwd=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
   const px=player.pos.x+fwd.x*3.5, pz=player.pos.z+fwd.z*3.5;
-  spawnProp(src, [px, 1.1, pz, 0,0,0, 0.9], (obj)=>{
+  const sc = (slot.scale>0) ? slot.scale : 0.9;
+  const mat = {}; if(slot.col!=null) mat.col=slot.col; if(slot.tex) mat.tex=slot.tex;   // build 671: per-slot look; propEntry sends it to peers
+  spawnProp(slot.src||'box', [px, 1.1, pz, 0,0,0, sc], (obj)=>{
     obj.userData.runtime = true;   // radial-deployed: session-only (never saved, hidden from the editor, cleared on redeploy)
     setPropDynamic(obj, true);
-    if(exp){ obj.userData.explosive=true; obj.userData.blastRadius=7; obj.userData.blastDmg=70; obj.userData.impactVel=10; }
-  }, undefined, 'loop', null);
+    if(slot.exp){ obj.userData.explosive=true; obj.userData.blastRadius=7; obj.userData.blastDmg=70; obj.userData.impactVel=10; }
+  }, undefined, 'loop', (mat.col!=null || mat.tex) ? mat : null);
   if(typeof SFX!=='undefined' && SFX.swap) SFX.swap();
 }
 
@@ -18549,7 +18575,7 @@ const MODE_SECTIONS = {
   scene:   ['world','generate','zones'],   // the 5 placeable volumes are grouped under one 'zones' section with a type picker (build 649)
   player:  ['gizmo','object','transform','characters'],   // build 652: the player avatar, the spawn point + the character roster are their own area
   enemies: ['enemies','gizmo','object','transform','boltfx'],   // spawn points live here now; their picker/fields/gizmo sections come along. enemy gunfire FX (boltfx) moved here in build 647 — it's about enemies, not your weapons
-  rules:   ['game','pickups','loot','invitems'],
+  rules:   ['game','pickups','loot','invitems','buildmenu'],
   kit:     ['object','transform','wepfx'],   // 'object' carries the weapon model import + per-weapon shoot sound; the 3 FX panels (impacts/tracer/crosshair) are grouped under one 'wepfx' picker (build 653); music/SFX live in Scene
   hud:     ['hud'],   // build 665: per-level HUD theme + visibility
   files:   ['levelfile','campaign'],
@@ -18569,6 +18595,7 @@ const SEC_SUB = {
   pickups:    'Pads that grant ammo, health & power-ups.',
   loot:       'What enemies and crates drop when destroyed.',
   invitems:   'Define carryable items and what using them does.',
+  buildmenu:  'The in-game radial Deploy menu — shapes/models players can spawn.',
   audiozones: 'Positional sound that plays while you stand inside a radius.',
   deathzones: 'Areas that kill on contact — pits, lava, out-of-bounds.',
   jumppads:   'Launch the player up or forward on contact.',
@@ -19021,6 +19048,7 @@ function serializeLevel(){
     station: { url: stationModelUrl, state: Object.assign({}, editorTargets.station.state) },
     stationEnabled: !!stationEnabled,   // build 654: the ammo station is optional per level
     hud: _sanitizeHud(hudCfg),   // build 665: per-level HUD theme + visibility
+    radial: _sanitizeRadial(radialCfg),   // build 671: the in-game build/deploy menu
     player:  { url: playerModelCfg.url, thumb: playerModelCfg.thumb||'', state: Object.assign({}, editorTargets.player.state), clips: Object.assign({}, playerModelCfg.clips), clipSpeed: Object.assign({}, playerModelCfg.clipSpeed||{}), clipHold: Object.assign({}, playerModelCfg.clipHold||{}), clipInPlace: Object.assign({}, playerModelCfg.clipInPlace||{}) },
     world:   Object.assign({}, worldCfg),
     chest:   { url: chestModelUrl, scale: chestModelScale, randomOff: !randomLootOn },
@@ -19196,6 +19224,59 @@ function renderTracerFxPanel(){
 // build 637: fine control over how ranged enemies' gunfire LOOKS (cosmetic only — no effect on damage/aim).
 // build 665: per-level HUD theming editor. Every control writes hudCfg + re-applies live (you see it because
 // HUD mode turns on .hudPreview). Serialized with the level.
+// build 671: edit the in-game radial Deploy menu. Up to 8 slots; each is a built-in shape or a custom model URL
+// with its own colour / texture / scale / explosive / label-icon. Saved with the level; deployed props (and
+// their material) already sync to every player via the prop reconciler, so a custom build kit is shared online.
+function renderBuildMenuPanel(){
+  const host=document.getElementById('edBuildMenu'); if(!host) return; host.innerHTML='';
+  const wrap=document.createElement('div');
+  const touch=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); _levelDirty=true; };
+  const lbl=(t)=>{ const s=document.createElement('span'); s.textContent=t; s.style.cssText='flex:1 1 auto;font-size:11px;color:#cfeee2;'; return s; };
+  const intro=document.createElement('div'); intro.className='hint'; intro.style.cssText='margin:0 0 8px;font-size:10px;opacity:.8;';
+  intro.innerHTML='The radial <b>Deploy</b> menu players hold in-game. Each slot is a shape or a custom model URL with its own colour/texture/scale. Saved with the level &amp; shared in multiplayer.';
+  wrap.appendChild(intro);
+  radialCfg.forEach((s,i)=>{
+    const card=document.createElement('div'); card.style.cssText='border:1px solid rgba(var(--accent-rgb),0.18);border-radius:6px;padding:7px 8px;margin-bottom:7px;';
+    const head=document.createElement('div'); head.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:5px;';
+    const ttl=document.createElement('b'); ttl.textContent='Slot '+(i+1); ttl.style.cssText='flex:1 1 auto;font-size:11px;color:var(--accent);letter-spacing:.05em;';
+    const mk=(txt,title,fn,dis)=>{ const b=document.createElement('button'); b.textContent=txt; b.title=title; b.style.cssText='font-size:11px;padding:1px 7px;flex:0 0 auto;'; if(dis) b.disabled=true; b.onclick=fn; return b; };
+    head.appendChild(ttl);
+    head.appendChild(mk('↑','Move up',()=>{ if(i>0){ touch(); radialCfg.splice(i-1,0,radialCfg.splice(i,1)[0]); renderBuildMenuPanel(); } }, i===0));
+    head.appendChild(mk('↓','Move down',()=>{ if(i<radialCfg.length-1){ touch(); radialCfg.splice(i+1,0,radialCfg.splice(i,1)[0]); renderBuildMenuPanel(); } }, i===radialCfg.length-1));
+    head.appendChild(mk('✕','Remove this slot',()=>{ if(radialCfg.length>1){ touch(); radialCfg.splice(i,1); renderBuildMenuPanel(); } }, radialCfg.length<=1));
+    card.appendChild(head);
+    const row=(label,node)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0;'; r.appendChild(lbl(label)); r.appendChild(node); card.appendChild(r); return r; };
+    // shape / custom model
+    const isPrim = RADIAL_PRIMS.indexOf(s.src)>=0;
+    const sel=document.createElement('select'); sel.style.cssText='flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:11px;';
+    for(const p of RADIAL_PRIMS){ const o=document.createElement('option'); o.value=p; o.textContent=p.charAt(0).toUpperCase()+p.slice(1); if(isPrim&&s.src===p) o.selected=true; sel.appendChild(o); }
+    { const o=document.createElement('option'); o.value='__model'; o.textContent='Custom model…'; if(!isPrim) o.selected=true; sel.appendChild(o); }
+    sel.onchange=()=>{ touch(); if(sel.value==='__model'){ s.src = isModelSrc(s.src)?s.src:''; } else { s.src=sel.value; } renderBuildMenuPanel(); };
+    row('Type', sel);
+    if(!isPrim || sel.value==='__model'){ const u=document.createElement('input'); u.type='text'; u.placeholder='https://…/model.glb'; u.value=isModelSrc(s.src)?s.src:''; u.style.cssText='flex:1 1 auto;min-width:0;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; u.onchange=()=>{ touch(); s.src=u.value.trim()||'box'; }; const r=document.createElement('div'); r.style.cssText='display:flex;margin:3px 0;'; r.appendChild(u); card.appendChild(r); }
+    // label + icon
+    { const li=document.createElement('input'); li.type='text'; li.value=s.label; li.maxLength=18; li.style.cssText='flex:0 0 auto;width:96px;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; li.onchange=()=>{ touch(); s.label=li.value.slice(0,18)||'Prop'; };
+      const ic=document.createElement('input'); ic.type='text'; ic.value=s.icon; ic.maxLength=4; ic.title='Emoji/glyph shown in the wheel'; ic.style.cssText='flex:0 0 auto;width:40px;text-align:center;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 4px;font-size:13px;'; ic.onchange=()=>{ touch(); s.icon=ic.value.slice(0,4)||'◆'; };
+      const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0;'; r.appendChild(lbl('Label / icon')); r.appendChild(li); r.appendChild(ic); card.appendChild(r); }
+    // colour (tint) + texture
+    { const wrap2=document.createElement('div'); wrap2.style.cssText='display:flex;align-items:center;gap:6px;flex:0 0 auto;';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=s.col!=null; cb.title='Tint this prop'; cb.style.cssText='width:14px;height:14px;accent-color:var(--accent);';
+      const ci=document.createElement('input'); ci.type='color'; ci.value='#'+((s.col!=null?s.col:0x8a97a0)>>>0).toString(16).padStart(6,'0').slice(-6); ci.style.cssText='width:34px;height:22px;padding:0;border:1px solid #2a3a42;border-radius:4px;background:#0c1418;cursor:pointer;'; ci.disabled=(s.col==null);
+      cb.onchange=()=>{ touch(); s.col = cb.checked ? parseInt(ci.value.slice(1),16) : null; ci.disabled=!cb.checked; };
+      ci.oninput=()=>{ touch(); s.col=parseInt(ci.value.slice(1),16); };
+      wrap2.appendChild(cb); wrap2.appendChild(ci); row('Colour', wrap2); }
+    { const tx=document.createElement('input'); tx.type='text'; tx.placeholder='texture image URL (optional)'; tx.value=s.tex||''; tx.style.cssText='flex:1 1 auto;min-width:0;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; tx.onchange=()=>{ touch(); s.tex=tx.value.trim(); }; row('Texture', tx); }
+    // scale + explosive
+    { const rr=document.createElement('input'); rr.type='range'; rr.min='0.2'; rr.max='4'; rr.step='0.05'; rr.value=String(s.scale); rr.style.cssText='flex:1 1 auto;accent-color:var(--accent);max-width:110px;'; const nn=document.createElement('span'); nn.style.cssText='flex:0 0 auto;width:34px;text-align:right;color:#9fdcc9;font-size:11px;'; nn.textContent=(+s.scale).toFixed(2); rr.addEventListener('pointerdown',touch); rr.oninput=()=>{ s.scale=+rr.value; nn.textContent=(+s.scale).toFixed(2); _levelDirty=true; }; const r=row('Scale', rr); r.appendChild(nn); }
+    { const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!s.exp; cb.style.cssText='width:14px;height:14px;accent-color:var(--accent);flex:0 0 auto;'; cb.onchange=()=>{ touch(); s.exp=cb.checked; }; row('Explosive', cb); }
+    wrap.appendChild(card);
+  });
+  const btnRow=document.createElement('div'); btnRow.className='row2'; btnRow.style.marginTop='4px';
+  const add=document.createElement('button'); add.textContent='+ Add slot'; add.disabled=radialCfg.length>=8; add.onclick=()=>{ if(radialCfg.length<8){ touch(); radialCfg.push({ src:'box', label:'Prop', icon:'◆', exp:false, col:null, tex:'', scale:0.9 }); renderBuildMenuPanel(); } };
+  const rst=document.createElement('button'); rst.textContent='Reset to default'; rst.onclick=()=>{ touch(); radialCfg=_sanitizeRadial(null); renderBuildMenuPanel(); };
+  btnRow.appendChild(add); btnRow.appendChild(rst); wrap.appendChild(btnRow);
+  host.appendChild(wrap);
+}
 function renderHudPanel(){
   const host=document.getElementById('edHud'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
@@ -19466,6 +19547,7 @@ function restoreLevel(level){
   tracerCfg = _sanitizeTracer(level.tracer); if(typeof renderTracerFxPanel==='function') renderTracerFxPanel();
   boltCfg = _sanitizeBolt(level.bolt); if(typeof renderBoltFxPanel==='function') renderBoltFxPanel();
   hudCfg = _sanitizeHud(level.hud); if(typeof applyHudCfg==='function') applyHudCfg(); if(typeof renderHudPanel==='function') renderHudPanel();   // build 665: per-level HUD theme
+  radialCfg = _sanitizeRadial(level.radial); if(typeof renderBuildMenuPanel==='function') renderBuildMenuPanel();   // build 671: per-level build menu
   charRoster = Array.isArray(level.roster) ? level.roster.map(_sanitizeCharCfg) : []; if(typeof renderCharRosterPanel==='function') renderCharRosterPanel();
   if(level.grenade){ const G=level.grenade; if(G.model!=null) GRENADE.model=G.model||''; if(G.scale!=null) GRENADE.scale=G.scale; if(G.radius!=null) GRENADE.radius=G.radius; if(G.damage!=null) GRENADE.damage=G.damage; if(G.fuse!=null) GRENADE.fuse=G.fuse; if(G.throwForce!=null) GRENADE.throwForce=G.throwForce; loadGrenadeModel(); if(editorTargets.grenade.sync) editorTargets.grenade.sync(); }
   // gun / aim / station
@@ -19816,6 +19898,7 @@ function buildEditorPanel(){
     + sec('Pickups', 'pickups', '<div id="edPickups"></div>')
     + sec('Loot', 'loot', '<div id="edLoot"></div>')
     + sec('Inventory items', 'invitems', '<div id="edInvItems"></div>')
+    + sec('Build menu', 'buildmenu', '<div id="edBuildMenu"></div>')
     + sec('Zones', 'zones',
           '<div id="edZonePicker"></div>'
         + '<div id="edAudioZones" class="zoneHost" data-zone="audiozones"></div>'
@@ -19984,6 +20067,7 @@ function buildEditorPanel(){
   if(typeof renderWepFxPicker==='function') renderWepFxPicker();          // build 653: the grouped weapon-FX type picker
   if(typeof applyWepFxVisibility==='function') applyWepFxVisibility();     // ...and reveal only the active FX panel
   if(typeof renderHudPanel==='function') renderHudPanel();                // build 665: HUD theming panel
+  if(typeof renderBuildMenuPanel==='function') renderBuildMenuPanel();    // build 671: radial build-menu editor
   // restore saved width + wire drag-to-resize (drag the left edge; wider = more room for the crowded panels)
   try{ const w = parseInt(localStorage.getItem('breach_editor_width')||'',10); if(w>=260 && w<=window.innerWidth*0.92) p.style.width = w+'px'; }catch(e){}
   (function(){

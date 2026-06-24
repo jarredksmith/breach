@@ -4,16 +4,19 @@
 import { gameSource, extractFunction, html, done, assert } from './harness.mjs';
 const src = gameSource();
 
-assert(/const RADIAL_ITEMS=\[/.test(src) && /label:'Explosive'\}/.test(src), 'radial item set incl. explosive');
-assert(/function openRadial\(\)/.test(src) && /function closeRadial\(deploy\)/.test(src) && /function radialMove\(dx,dy\)/.test(src) && /function deployProp\(src, exp\)/.test(src), 'radial + deploy fns');
+// build 671: the radial menu is now a per-level configurable list (radialCfg), default still crate..explosive
+assert(/const DEFAULT_RADIAL = \[/.test(src) && /label:'Explosive', icon:/.test(src), 'default radial set incl. explosive');
+assert(/let radialCfg = _sanitizeRadial\(savedLevel && savedLevel\.radial\);/.test(src), 'radial menu is per-level configurable');
+assert(/function openRadial\(\)/.test(src) && /function closeRadial\(deploy\)/.test(src) && /function radialMove\(dx,dy\)/.test(src) && /function deployProp\(slot\)/.test(src), 'radial + deploy fns');
 
 const op = extractFunction('openRadial');
 assert(/if\(!gameOn \|\| editorOpen \|\| shopOpen \|\| paused \|\| duelDead \|\| radialOpen\) return;/.test(op), 'wheel only opens in live play');
 
 const dp = extractFunction('deployProp');
 assert(/if\(.*_deployCD>0\) return; _deployCD=0\.5;/.test(dp), 'deploy has a cooldown');
-assert(/spawnProp\(src, \[px, 1\.1, pz, 0,0,0, 0\.9\], \(obj\)=>\{\n    obj\.userData\.runtime = true;[\s\S]*?setPropDynamic\(obj, true\);/.test(dp), 'deploys a dynamic prop in front of the player');
-assert(/if\(exp\)\{ obj\.userData\.explosive=true; obj\.userData\.blastRadius=7; obj\.userData\.blastDmg=70; obj\.userData\.impactVel=10; \}/.test(dp), 'explosive option flags the prop');
+assert(/spawnProp\(slot\.src\|\|'box', \[px, 1\.1, pz, 0,0,0, sc\], \(obj\)=>\{\n    obj\.userData\.runtime = true;[\s\S]*?setPropDynamic\(obj, true\);/.test(dp), 'deploys a dynamic prop in front of the player (slot scale + material)');
+assert(/const mat = \{\}; if\(slot\.col!=null\) mat\.col=slot\.col; if\(slot\.tex\) mat\.tex=slot\.tex;/.test(dp), 'the slot’s colour/texture ride the prop (and sync via the reconciler)');
+assert(/if\(slot\.exp\)\{ obj\.userData\.explosive=true; obj\.userData\.blastRadius=7; obj\.userData\.blastDmg=70; obj\.userData\.impactVel=10; \}/.test(dp), 'explosive option flags the prop');
 
 assert(/if\(e\.code==='Tab'\)\{ if\(!e\.repeat\) openRadial\(\); e\.preventDefault\(\); return; \}/.test(src), 'hold Tab opens the wheel');
 assert(/if\(e\.code==='Tab' && radialOpen\) closeRadial\(true\);/.test(src), 'releasing Tab confirms the highlighted wedge');
