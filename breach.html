@@ -9169,6 +9169,7 @@ function showWeaponModel(key){
       _gunClipNames[key] = (gltf.animations||[]).map(c=>c.name||'');
       if(!_playWepStates(key, model, gltf)) playModelAnimations(model, gltf);   // gun idle/shoot/reload OR fist idle/punchR/punchL/grab, else the old loop-everything
       if(model.visible) applyWepView(model, key);   // reassert this weapon's own framing once it's live
+      if(editorOpen && editorActive==='gun' && key===curWep && typeof renderEditorFields==='function') renderEditorFields();   // build 680: the new model's clip list is known now -> refresh the animation-slot dropdowns
       console.log('Weapon model loaded:', key, url);
     },
     (err)=>{ _gunLoading[key]=false; console.warn('Weapon model load failed for', key, '-', err && err.message); }   // placeholder stays
@@ -9214,7 +9215,10 @@ function updateLaser(){
 // to set the shared default gun url (legacy single-gun behavior) that weapons fall back to.
 function swapGunModel(url, key){
   if(key){
-    const w = WEAPONS[key]; if(w){ if((w.model||'')!==(url||'')) w.view = null; w.model = url || ''; }   // new URL -> auto-frame the fresh model
+    // new URL -> auto-frame the fresh model AND forget the old model's animation memory (build 680): the previous
+    // clip-name picks (idle/shoot/reload or fist idle/punchR/punchL/grab) and discovered clip list belong to a
+    // model that's gone, so a different import auto-resolves cleanly instead of pointing at vanished clips.
+    const w = WEAPONS[key]; if(w){ if((w.model||'')!==(url||'')){ w.view = null; w.clips = undefined; _gunClipNames[key] = []; } w.model = url || ''; }
     if(gunModelByWep[key]){ gun.remove(gunModelByWep[key]); const m=gunModelByWep[key].userData && gunModelByWep[key].userData.mixer; if(m){ const mi=mixers.indexOf(m); if(mi>=0) mixers.splice(mi,1); } gunModelByWep[key]=null; } _gunLoading[key]=false;
     if(key === curWep) showWeaponModel(key);
   } else {
@@ -14816,7 +14820,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 679 · 2026-06-24';
+const BUILD_VERSION = 'build 680 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
