@@ -7104,13 +7104,19 @@ function fireSignals(o, when){
   const sigs = o && o.userData && o.userData.signals; if(!sigs || !sigs.length) return;
   for(const s of sigs){
     if(s.when !== when) continue;
-    if(s.do==='win'){ if(typeof NET==='undefined' || NET.mode!=='client'){ try{ gameWon(); }catch(e){} } continue; }   // ends the level; needs no target. Solo/host only — a client's E can't end the match.
+    _applySignalAction(s);
+  }
+}
+// Apply ONE signal's action (shared by E/destroy/contact firing). win/cutscene need no target; everything else
+// fans the action out to every prop carrying the target tag, honouring each target's sigNeed counter gate.
+function _applySignalAction(s){
+    if(s.do==='win'){ if(typeof NET==='undefined' || NET.mode!=='client'){ try{ gameWon(); }catch(e){} } return; }   // ends the level; needs no target. Solo/host only — a client's E can't end the match.
     if(s.do==='cutscene'){   // plays a cutscene by name mid-game, for everyone. No target needed; blank name = cutscene #1.
       const cc = (typeof cutsceneByName==='function') ? cutsceneByName(s.cs) : null;
       if(cc && _ccHasData(cc) && (typeof _cineActive==='undefined' || !_cineActive) && (typeof editorOpen==='undefined' || !editorOpen)){
         try{ startCinematic({ shots: cineShotsOf(cc), audio: cc.audio }, false); if(typeof broadcastCine==='function') broadcastCine(s.cs); }catch(e){}
-      } continue; }
-    if(!s.target) continue;
+      } return; }
+    if(!s.target) return;
     for(let i=0;i<propModels.length;i++){
       const t = propModels[i]; if(!t || t.userData.tag !== s.target) continue;
       // counter gate: a target with sigNeed>1 absorbs signals until enough have arrived ("all 3 generators")
@@ -7122,6 +7128,37 @@ function fireSignals(o, when){
         else if(s.do==='anim'){ playPropAnimationOnce(t, s.clip); broadcastAnim(i, s.clip); }
         else if(s.do==='unlock'){ if(t.userData.lockId && !t.userData.unlocked){ t.userData.unlocked=true; broadcastUnlock(i); } }
       }catch(e){}
+    }
+}
+// build 682: CONTACT signals (when:'contact') fire when another prop is touching this one (a box on a pressure
+// plate) or sitting inside it (an item dropped in a bin). Authoritative side only (host/solo); the actions
+// broadcast as usual. Edge-triggered: fires once when contact begins, and re-arms when it clears.
+const _cBoxA = new THREE.Box3(), _cBoxB = new THREE.Box3(), _cCtr = new THREE.Vector3();
+let _contactAcc = 0;
+function _contactObjectPresent(detector, s){
+  const from = (s.from||'').trim();
+  _cBoxA.setFromObject(detector); if(_cBoxA.isEmpty()) return false;
+  for(let i=0;i<propModels.length;i++){
+    const c = propModels[i]; if(!c || c===detector) continue;
+    if(!c.userData || !c.userData.phys) continue;        // only a physical (dynamic) prop can be "placed"
+    if(from && c.userData.tag !== from) continue;         // optional filter: only objects with this tag count
+    _cBoxB.setFromObject(c); if(_cBoxB.isEmpty()) continue;
+    if(s.contain){ _cBoxB.getCenter(_cCtr); if(_cBoxA.containsPoint(_cCtr)) return true; }   // its centre sits inside the detector
+    else if(_cBoxA.intersectsBox(_cBoxB)) return true;                                       // it's touching the detector
+  }
+  return false;
+}
+function tickContactSignals(dt){
+  if(!gameOn || editorOpen) return;
+  if(typeof NET!=='undefined' && NET.mode==='client') return;   // host/solo authors the fire; clients see broadcasts
+  _contactAcc -= dt; if(_contactAcc>0) return; _contactAcc = 0.12;
+  for(let i=0;i<propModels.length;i++){
+    const o = propModels[i]; const sigs = o && o.userData && o.userData.signals; if(!sigs || !sigs.length) continue;
+    for(const s of sigs){
+      if(s.when!=='contact') continue;
+      const hit = _contactObjectPresent(o, s);
+      if(hit && !s._active){ s._active=true; try{ _applySignalAction(s); }catch(e){} }
+      else if(!hit && s._active){ s._active=false; }   // re-arm so it can fire again next time something is placed
     }
   }
 }
@@ -8034,7 +8071,7 @@ function removeProp(idx){
 function loadHostedProps(){
   const list = (savedLevel && Array.isArray(savedLevel.props)) ? savedLevel.props : SCENE_PROPS;
   propModels.length = list.length;   // reserve slots so async GLB loads can't clobber later push-spawned props
-  list.forEach((p, i)=> spawnProp(p.src, p.t, (obj)=>{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip));   // slot=i preserves order
+  list.forEach((p, i)=> spawnProp(p.src, p.t, (obj)=>{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; if(s.f) x.from=s.f; if(s.ci) x.contain=true; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip));   // slot=i preserves order
 }
 loadHostedProps();
 
@@ -12228,7 +12265,7 @@ function loadLevelFromNet(level){
   // rebuild from the host's data
   if(Array.isArray(level.props)){
     propModels.length = level.props.length;
-    level.props.forEach((p,i)=>{ try{ spawnProp(p.src, p.t, (obj)=>{ try{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); if(obj.userData.nid) NET.sentProps.set(obj.userData.nid, obj.userData.phys ? 'dyn' : propTuple(obj)); }catch(e){ console.warn('net prop '+i+' apply failed', e); } }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip); }catch(e){ console.warn('net prop '+i+' failed', e); } });
+    level.props.forEach((p,i)=>{ try{ spawnProp(p.src, p.t, (obj)=>{ try{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; if(s.f) x.from=s.f; if(s.ci) x.contain=true; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); if(obj.userData.nid) NET.sentProps.set(obj.userData.nid, obj.userData.phys ? 'dyn' : propTuple(obj)); }catch(e){ console.warn('net prop '+i+' apply failed', e); } }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip); }catch(e){ console.warn('net prop '+i+' failed', e); } });
   }
   if(Array.isArray(level.lights)){ for(const L of level.lights) buildLight(L); }
   turretModelUrl=(level.turret && level.turret.url)||''; turretModelScale=(level.turret && +level.turret.scale)||1; turretModelYaw=(level.turret && +level.turret.modelYaw)||0; turretMuzzle={ fwd:(level.turret&&level.turret.muz&&+level.turret.muz.fwd)||1.1, up:(level.turret&&level.turret.muz&&+level.turret.muz.up)||0, side:(level.turret&&level.turret.muz&&+level.turret.muz.side)||0 }; clearTurrets(); if(Array.isArray(level.turrets)) for(const T of level.turrets) buildTurret(T);
@@ -14820,7 +14857,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 681 · 2026-06-24';
+const BUILD_VERSION = 'build 682 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18076,6 +18113,7 @@ function loop(){
   if(typeof navWarmupTick==='function' && navWarmupTick(dt)){ /* bots held during pre-match build/countdown */ } else updateBots(dt);
   updateXAnim(dt);                       // moving platforms / doors (all peers)
   tickGrabHint(dt);                      // "[E] Grab" / carry prompt
+  tickContactSignals(dt);                // build 682: prop-on-prop contact / containment signals
   updateControlPoint(dt); cpRender();   // KOTH zone capture/score + HUD
   // bolt streak trails + impact flashes (fade + expand, then dispose)
   for(let i=boltTrails.length-1;i>=0;i--){
@@ -19235,7 +19273,7 @@ function propEntry(o){
   const m=propMaterialDesc(o); if(m) e.mat=m;
   if(o.userData.lockId){ e.lk=o.userData.lockId; if(o.userData.lockConsume) e.lkc=1; }
   if(o.userData.tag) e.tg=o.userData.tag;
-  if(o.userData.signals && o.userData.signals.length) e.sg=o.userData.signals.map(s=>{ const x={ w:s.when, d:s.do, t:s.target }; if(s.clip) x.c=s.clip; if(s.cs) x.n=s.cs; return x; });
+  if(o.userData.signals && o.userData.signals.length) e.sg=o.userData.signals.map(s=>{ const x={ w:s.when, d:s.do, t:s.target }; if(s.clip) x.c=s.clip; if(s.cs) x.n=s.cs; if(s.from) x.f=s.from; if(s.contain) x.ci=1; return x; });
   if(o.userData.sigNeed>1) e.snd=o.userData.sigNeed;
   if(o.userData.attribution) e.att=o.userData.attribution;
   if(o.userData.nid) e.nid=o.userData.nid;
@@ -19754,7 +19792,7 @@ function restoreLevel(level){
   propModels.length = 0;
   if(Array.isArray(level.props)){
     propModels.length = level.props.length;
-    level.props.forEach((p,i)=>{ try{ spawnProp(p.src, p.t, (obj)=>{ try{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); }catch(e){ console.warn('prop '+i+' apply failed', e); } }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip); }catch(e){ console.warn('prop '+i+' failed to load', e); } });
+    level.props.forEach((p,i)=>{ try{ spawnProp(p.src, p.t, (obj)=>{ try{ applyPropDynState(obj, p); if(p.lk){ obj.userData.lockId=p.lk; if(p.lkc) obj.userData.lockConsume=true; } if(p.tg) obj.userData.tag=p.tg; if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ const x={ when:s.w, do:s.d, target:s.t }; if(s.c) x.clip=s.c; if(s.n) x.cs=s.n; if(s.f) x.from=s.f; if(s.ci) x.contain=true; return x; }); if(p.snd>1) obj.userData.sigNeed=+p.snd; if(p.att) obj.userData.attribution=p.att; if(p.xa) xaApply(obj, p.xa); }catch(e){ console.warn('prop '+i+' apply failed', e); } }, i, {trig:(p.animTrig||(p.anim==='trigger'?'interact':'auto')), play:(p.animPlay||(p.anim==='trigger'?'once':'loop'))}, p.mat || (p.tex ? {tex:p.tex} : null), undefined, p.nid, p.animClip); }catch(e){ console.warn('prop '+i+' failed to load', e); } });
   }
   // lights
   for(let i=lightModels.length-1;i>=0;i--) removeLight(i);
@@ -20438,6 +20476,7 @@ function levelIssues(){
       for(const s of o.userData.signals){
         if(s.target && !tags.has(s.target)) issues.push("A signal targets tag '"+s.target+"', but no prop carries that tag.");
         if(!s.target && s.do!=='win' && s.do!=='cutscene') issues.push('A signal has no target tag (only Win level and Play cutscene work without one).');
+        if(s.when==='contact' && s.from && !tags.has(s.from)) issues.push("A contact signal only triggers on objects tagged '"+s.from+"', but no prop carries that tag.");
         if(s.do==='cutscene'){
           const _all=[cineCfg, ...((cineCfg&&Array.isArray(cineCfg.others))?cineCfg.others:[])];
           const _cc = !s.cs ? _all[0] : _all.find(c=>c && ((c===cineCfg?(c.name||'Intro'):c.name)===s.cs));
@@ -21727,7 +21766,7 @@ function renderEditorFields(){
         const sigs = sel.userData.signals || (sel.userData.signals=[]);
         sigs.forEach((s,si)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;gap:4px;align-items:center;margin:0 0 3px;';
           const mkSel=(opts,val,on)=>{ const e=document.createElement('select'); e.style.cssText='font-size:11px;flex:1;'; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if(val===o[0]) op.selected=true; e.appendChild(op); }); e.onchange=()=>{ pushUndoSnapshot(); on(e.value); renderEditorFields(); }; return e; };
-          r.appendChild(mkSel([['destroyed','On destroyed'],['interacted','On E']], s.when, v=>{ s.when=v; }));
+          r.appendChild(mkSel([['destroyed','On destroyed'],['interacted','On E'],['contact','On object placed']], s.when, v=>{ s.when=v; }));
           r.appendChild(mkSel([['toggle','Toggle'],['open','Open'],['close','Close'],['anim','Play anim'],['unlock','Unlock'],['win','Win level'],['cutscene','Play cutscene']], s.do, v=>{ s.do=v; }));
           const ti=document.createElement('input'); ti.type='text'; ti.placeholder='target tag'; ti.value=s.target||'';
           ti.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
@@ -21735,6 +21774,17 @@ function renderEditorFields(){
           const del=document.createElement('button'); del.textContent='\u00d7'; del.style.cssText='padding:1px 7px;font-size:12px;';
           del.onclick=()=>{ pushUndoSnapshot(); sigs.splice(si,1); renderEditorFields(); };
           r.appendChild(ti); r.appendChild(del); sgBody.appendChild(r);
+          if(s.when==='contact'){   // build 682: what counts as "placed" — which object, and touching vs inside
+            const cr=document.createElement('div'); cr.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
+            const fi=document.createElement('input'); fi.type='text'; fi.placeholder='object tag (blank = any prop)'; fi.value=s.from||'';
+            fi.title='Only an object carrying this tag triggers it (blank = any physical prop)';
+            fi.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
+            fi.onchange=()=>{ pushUndoSnapshot(); const v=fi.value.trim(); if(v) s.from=v; else delete s.from; };
+            const mi=document.createElement('select'); mi.style.cssText='flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 4px;font-size:10px;';
+            for(const [v,t] of [['','Touching it'],['1','Inside it']]){ const op=document.createElement('option'); op.value=v; op.textContent=t; if((s.contain?'1':'')===v) op.selected=true; mi.appendChild(op); }
+            mi.onchange=()=>{ pushUndoSnapshot(); if(mi.value) s.contain=true; else delete s.contain; };
+            cr.appendChild(fi); cr.appendChild(mi); sgBody.appendChild(cr);
+          }
           if(s.do==='cutscene'){   // which named cutscene; blank = cutscene #1 (the intro)
             const nr2=document.createElement('div'); nr2.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
             const ni2=document.createElement('input'); ni2.type='text'; ni2.placeholder='cutscene name (blank = #1)'; ni2.value=s.cs||'';
@@ -21772,7 +21822,7 @@ function renderEditorFields(){
           add.onclick=()=>{ pushUndoSnapshot(); sigs.push({ when:'interacted', do:'toggle', target:'' }); renderEditorFields(); };
           sgBody.appendChild(add); }
         { const n=document.createElement('div'); n.className='hint'; n.style.margin='2px 0 0';
-          n.textContent='When this prop is destroyed or E-activated, fire the action on every prop carrying the target tag.';
+          n.innerHTML='When this prop is destroyed, E-activated, or has an object placed on/in it, fire the action on every prop carrying the target tag. <b>On object placed</b>: drop a box on a pressure plate (Touching it) or an item into a bin (Inside it) — optionally limit it to one tagged object.';
           sgBody.appendChild(n); }
       }
       // ---- Mechanism: move/rotate this object into a platform, door, elevator, etc. ----

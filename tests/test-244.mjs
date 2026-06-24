@@ -4,7 +4,7 @@ const src = gameSource();
 
 // --- executable: counter + win semantics ---
 const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET','gameWon',
-  extractFunction('fireSignals') + '\nreturn fireSignals;');
+  extractFunction('_applySignalAction') + '\n' + extractFunction('fireSignals') + '\nreturn fireSignals;');
 const mk = (net) => {
   const calls = { xbc:[], won:0 };
   const props = [ { userData:{ tag:'vault', xa:{ on:true, dest:0 }, sigNeed:3 } } ];

@@ -14,7 +14,7 @@ const f = (obj, clip) => fn({}, THREE, _propLoopMode)(obj, clip);
 { const { acts, obj } = mk(); f(obj, 'tpyo');    assert(acts.every(a=>a.plays===1), 'unknown name falls back to all clips, not silence'); }
 
 // --- the clip rides the whole pipeline ---
-assert(/playPropAnimationOnce\(t, s\.clip\); broadcastAnim\(i, s\.clip\);/.test(extractFunction('fireSignals')), 'signal anim action passes its clip');
+assert(/playPropAnimationOnce\(t, s\.clip\); broadcastAnim\(i, s\.clip\);/.test(extractFunction('_applySignalAction')), 'signal anim action passes its clip');
 assert(/function broadcastAnim\(i, clip\)\{/.test(src) && (src.match(/\{t:'anim', i, c:clip\|\|undefined\}/g)||[]).length === 2, 'clip in both broadcast paths');
 assert((src.match(/playPropAnimationOnce\(o, msg\.c\)/g)||[]).length === 2, 'both net handlers honor the clip');
 // editor: field only on anim rows, blank clears

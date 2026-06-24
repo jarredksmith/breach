@@ -5,7 +5,7 @@ const src = gameSource();
 // --- executable: the cutscene branch fires once, with guards ---
 const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET','gameWon',
   'cutsceneByName','_ccHasData','cineShotsOf','_cineActive','editorOpen','startCinematic','broadcastCine',
-  extractFunction('fireSignals') + '\nreturn fireSignals;');
+  extractFunction('_applySignalAction') + '\n' + extractFunction('fireSignals') + '\nreturn fireSignals;');
 const mk = (over) => {
   const calls = { started:0, bc:0 };
   const o = Object.assign({ has:true, active:false, editor:false }, over||{});
