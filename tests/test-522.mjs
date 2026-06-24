@@ -1,28 +1,35 @@
 import { gameSource, extractFunction, assert, eq, done } from './harness.mjs';
 const src = gameSource();
-// build 674: the radial build-menu editor gains (1) a per-slot Poly Pizza / Sketchfab model search (reusing the
-// shared renderModelSearch browser) and (2) a click-to-pick icon palette (RADIAL_ICONS) instead of a bare text field.
+// build 674/676: the radial build-menu editor gains (1) an always-available per-slot Poly Pizza / Sketchfab
+// model search (reusing renderModelSearch) and (2) a prebuilt SVG icon picker. Slots store an icon KEY that the
+// wheel/picker resolve through a trusted RADIAL_ICON_SVG map; unknown values fall back to an escaped text glyph.
 
-// --- a prebuilt icon palette exists and parses to a set of glyphs ---
-const m = src.match(/const RADIAL_ICONS = \[([\s\S]*?)\n\];/);
-assert(!!m, 'RADIAL_ICONS palette is defined');
-const ICONS = (new Function('return ['+m[1]+'];'))();
-assert(Array.isArray(ICONS) && ICONS.length>=48, 'the palette has a large set of icons ('+ICONS.length+')');
-assert(ICONS.every(g=>typeof g==='string' && g.length>0), 'every palette entry is a glyph');
-// no raw surrogate-pair emoji left literally in the source block (must be \uXXXX-escaped like the rest of the file)
-assert(!/[\uD800-\uDBFF]/.test(m[1]), 'the palette source uses escaped code units, not raw astral glyphs');
+// --- a prebuilt SVG icon set keyed by name ---
+assert(/const RADIAL_ICON_SVG = \{/.test(src), 'RADIAL_ICON_SVG map exists');
+assert(/const RADIAL_ICONS = Object\.keys\(RADIAL_ICON_SVG\);/.test(src), 'RADIAL_ICONS is the set of keys');
+for(const k of ['box','barrel','sphere','cone','bomb']) assert(new RegExp('\\b'+k+':_RICO\\(').test(src), 'icon "'+k+'" is defined');
+// the icons are inline SVG (currentColor stroke), not emoji
+assert(/const _RICO = \(inner\)=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"/.test(src), 'icons are currentColor SVG');
 
-// --- the editor panel wires the per-slot model search + the icon picker ---
+// --- the wheel renders icons via the safe resolver (and escapes the label) ---
+assert(/function radialIconHTML\(icon\)\{/.test(src), 'a radialIconHTML resolver exists');
+assert(/if\(RADIAL_ICON_SVG\[icon\]\) return RADIAL_ICON_SVG\[icon\];/.test(src), 'known keys resolve to the trusted SVG');
+assert(/return '<span class="radGlyph">'\+_escHtml\(icon\|\|'(?:◆|\\u25c6)'\)\+'<\/span>';/.test(src), 'unknown/legacy icons are HTML-escaped (multiplayer-safe)');
+const op = extractFunction('openRadial');
+assert(/radialIconHTML\(it\.icon\)/.test(op) && /_escHtml\(it\.label\)/.test(op), 'the wheel uses the resolver + escapes the label');
+
+// --- defaults use icon keys, not raw emoji ---
+assert(/label:'Crate',     icon:'crate'/.test(src) && /label:'Explosive', icon:'bomb'/.test(src), 'default slots use SVG icon keys');
+
+// --- the editor: always-on model search + SVG icon picker ---
 const panel = extractFunction('renderBuildMenuPanel');
-assert(/Search Poly Pizza \/ Sketchfab/.test(panel), 'each custom-model slot has a search button');
-assert(/renderModelSearch\(sBox, \(m,st\)=>\{[\s\S]*?s\.src=m\.glb; u\.value=m\.glb;/.test(panel), 'picking a search result sets the slot src + URL field');
-assert(/for\(const g of RADIAL_ICONS\)\{/.test(panel), 'the icon palette grid is built from RADIAL_ICONS');
-assert(/b\.onclick=\(\)=>\{ touch\(\); s\.icon=g; ic\.value=g; markIcons\(\); \}/.test(panel), 'clicking a palette icon sets the slot icon');
-assert(/pickBtn\.onclick=\(\)=>\{ const open=grid\.style\.display!=='none';/.test(panel), 'an Icons button toggles the palette');
+assert(/Custom model — search a library or paste a \.glb URL/.test(panel), 'the model search is always shown (not gated behind the dropdown)');
+assert(/renderModelSearch\(sBox, \(m,st\)=>\{[\s\S]*?s\.src=m\.glb; u\.value=m\.glb;/.test(panel), 'picking a result sets the slot src');
+assert(/for\(const g of RADIAL_ICONS\)\{[\s\S]*?b\.innerHTML=RADIAL_ICON_SVG\[g\];/.test(panel), 'the picker renders each icon as its SVG');
+assert(/b\.onclick=\(\)=>\{ touch\(\); s\.icon=g; setPrev\(\); markIcons\(\); \}/.test(panel), 'clicking an icon stores its key');
 
-// --- the per-slot search reuses the shared model browser (Poly Pizza + Sketchfab via its source bar) ---
-const rms = extractFunction('renderModelSearch');
-assert(/_modelSourceBar\(host,/.test(rms) && /renderSketchfabSearch\(body, onPick\)/.test(rms) && /renderModelSearchPP\(body, onPick, opts\)/.test(rms),
-  'renderModelSearch offers both Poly Pizza and Sketchfab');
+// --- sanitize keeps the icon as a (longer) key string ---
+const san = extractFunction('_sanitizeRadial');
+assert(/s\.icon\.slice\(0,24\)/.test(san), 'icon keys (longer than a glyph) survive sanitize');
 
-done('build 674: radial editor — per-slot model search + icon palette');
+done('build 676: radial editor — always-on model search + SVG icon picker');

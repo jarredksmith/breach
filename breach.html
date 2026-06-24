@@ -219,7 +219,9 @@
   #radial { position:fixed; inset:0; z-index:30; display:none; background:rgba(4,8,10,.45); }
   #radialRing { position:absolute; inset:0; }
   #radial .radItem { position:absolute; transform:translate(-50%,-50%); width:74px; text-align:center; color:#cfeee2; transition:transform .08s; pointer-events:none; }
-  #radial .radItem .radIcon { font-size:30px; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+  #radial .radItem .radIcon { font-size:30px; line-height:1; height:34px; display:flex; align-items:center; justify-content:center; filter:drop-shadow(0 2px 4px rgba(0,0,0,.6)); }
+  #radial .radItem .radIcon svg { width:34px; height:34px; }
+  #radial .radItem.hot .radIcon { color:var(--accent); }
   #radial .radItem .radName { font:600 11px ui-monospace,monospace; letter-spacing:1px; margin-top:2px; opacity:.8; }
   #radial .radItem.hot { transform:translate(-50%,-50%) scale(1.28); color:#fff; }
   #radial .radItem.hot .radName { opacity:1; color:var(--accent); }
@@ -14752,7 +14754,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 675 · 2026-06-24';
+const BUILD_VERSION = 'build 676 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15447,24 +15449,91 @@ function tickGrabHint(dt){
 // kit is shared in multiplayer. Serialized with the level.
 const RADIAL_PRIMS = ['box','cylinder','sphere','cone'];
 const DEFAULT_RADIAL = [
-  { src:'box',      label:'Crate',     icon:'\ud83d\udce6', exp:false, col:null,    tex:'', scale:0.9 },
-  { src:'cylinder', label:'Barrel',    icon:'\ud83e\ude92', exp:false, col:null,    tex:'', scale:0.9 },
-  { src:'sphere',   label:'Ball',      icon:'\u26aa',       exp:false, col:null,    tex:'', scale:0.9 },
-  { src:'cone',     label:'Cone',      icon:'\ud83d\udd3a', exp:false, col:null,    tex:'', scale:0.9 },
-  { src:'cylinder', label:'Explosive', icon:'\ud83d\udca5', exp:true,  col:0xc23b22, tex:'', scale:0.9 },
+  { src:'box',      label:'Crate',     icon:'crate',  exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cylinder', label:'Barrel',    icon:'barrel', exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'sphere',   label:'Ball',      icon:'sphere', exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cone',     label:'Cone',      icon:'cone',   exp:false, col:null,    tex:'', scale:0.9 },
+  { src:'cylinder', label:'Explosive', icon:'bomb',   exp:true,  col:0xc23b22, tex:'', scale:0.9 },
 ];
-// build 674: a prebuilt icon palette for the radial-menu editor (click to pick; raw-emoji-safe escapes).
-const RADIAL_ICONS = [
-  '\ud83d\udce6','\ud83d\udee2\ufe0f','\ud83e\uddf0','\ud83e\udea3','\ud83d\uded2','\ud83c\udf81','\ud83d\uddc3\ufe0f','\ud83e\uddf1','\ud83e\udea4','\ud83d\udedf',
-  '\u26bd','\ud83c\udfc0','\ud83c\udfb1','\ud83e\udea9','\u26aa','\ud83d\udd35','\ud83d\udd34','\ud83d\udfe2','\ud83d\udfe1','\ud83d\udfe0',
-  '\ud83d\udfe3','\ud83d\udfe4','\u25c6','\u25b2','\u25a0','\u25cf','\u2605','\u2726','\u2b22','\u2b1f',
-  '\ud83e\udde8','\ud83d\udca3','\ud83d\udca5','\ud83d\udd25','\u26a1','\u2622\ufe0f','\u2623\ufe0f','\u26a0\ufe0f','\ud83d\udea7','\ud83d\uded1',
-  '\ud83d\udd27','\ud83d\udd28','\ud83e\ude9a','\ud83e\ude9b','\u2699\ufe0f','\ud83d\udd29','\ud83e\uddf2','\u26cf\ufe0f','\ud83e\ude9d','\ud83d\udd17',
-  '\ud83c\udf32','\ud83c\udf33','\ud83e\udea8','\ud83c\udf35','\ud83c\udf44','\ud83e\udeb5','\ud83c\udf31','\ud83c\udf3f','\ud83e\ude91','\ud83d\udeaa',
-  '\ud83e\ude9f','\ud83c\udfe0','\ud83c\udfdb\ufe0f','\u26e9\ufe0f','\ud83d\uddff','\ud83d\udecb\ufe0f','\ud83d\udca1','\ud83d\udd26','\ud83d\udd6f\ufe0f','\ud83c\udfee',
-  '\u2728','\ud83d\udc8e','\ud83d\udc51','\ud83d\udd14','\ud83c\udfb2','\ud83c\udccf','\ud83d\udddd\ufe0f','\ud83d\udee1\ufe0f','\ud83c\udf88','\ud83e\ude81',
-  '\ud83e\uddca','\u2b50','\ud83d\ude97','\ud83d\udede'
-];
+// build 676: a prebuilt SVG icon set for the radial-menu editor + wheel. Slots store an icon KEY (e.g. 'crate');
+// the wheel/picker look it up in this trusted map. Unknown values (old emoji glyphs, custom text) fall back to
+// an HTML-escaped text glyph so nothing user-authored is ever injected as markup (multiplayer-safe).
+const _RICO = (inner)=>'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+inner+'</svg>';
+const RADIAL_ICON_SVG = {
+  // shapes
+  box:_RICO('<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>'),
+  cube:_RICO('<path d="M12 2 2 7v10l10 5 10-5V7Z"/><path d="m2 7 10 5 10-5"/><path d="M12 12v10"/>'),
+  sphere:_RICO('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 0 0 18 14 14 0 0 0 0-18"/>'),
+  cylinder:_RICO('<ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v14a7 3 0 0 0 14 0V5"/>'),
+  cone:_RICO('<path d="M12 3 4 19h16Z"/><ellipse cx="12" cy="19" rx="8" ry="2"/>'),
+  pyramid:_RICO('<path d="M12 3 3 20h18Z"/><path d="M12 3v17"/>'),
+  square:_RICO('<rect x="4" y="4" width="16" height="16" rx="1"/>'),
+  circle:_RICO('<circle cx="12" cy="12" r="9"/>'),
+  diamond:_RICO('<path d="M12 2 22 12 12 22 2 12Z"/>'),
+  hexagon:_RICO('<path d="M21 16.05V7.95a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4a2 2 0 0 0-1 1.73v8.1a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73Z"/>'),
+  star:_RICO('<path d="m12 2 3 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.9 21l1.2-6.8-5-4.9 6.9-1Z"/>'),
+  sparkle:_RICO('<path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6 5.6 18.4"/>'),
+  // containers
+  crate:_RICO('<rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/>'),
+  barrel:_RICO('<path d="M5 6c0-1.1 3.1-2 7-2s7 .9 7 2v12c0 1.1-3.1 2-7 2s-7-.9-7-2Z"/><path d="M5 9c0 1.1 3.1 2 7 2s7-.9 7-2"/><path d="M5 15c0 1.1 3.1 2 7 2s7-.9 7-2"/>'),
+  gift:_RICO('<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/>'),
+  bucket:_RICO('<path d="M4 7h16l-1.6 12.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8Z"/><path d="M4 7a8 3 0 0 1 16 0"/>'),
+  toolbox:_RICO('<path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M8 9V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3"/><path d="M3 13h18"/>'),
+  chest:_RICO('<path d="M3 11a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1Z"/><path d="M3 13h18"/><path d="M11 13h2v3h-2z"/>'),
+  cart:_RICO('<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>'),
+  // hazards
+  bomb:_RICO('<circle cx="11" cy="13" r="9"/><path d="M14.35 4.65 16.3 2.7a2.41 2.41 0 0 1 3.4 0l1.6 1.6a2.4 2.4 0 0 1 0 3.4l-1.95 1.95"/><path d="m22 2-1.5 1.5"/>'),
+  flame:_RICO('<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5Z"/>'),
+  zap:_RICO('<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14Z"/>'),
+  radiation:_RICO('<circle cx="12" cy="12" r="2"/><path d="M12 10V3a9 9 0 0 0-7.8 4.5l6.06 3.5"/><path d="m13.74 11 6.06-3.5A9 9 0 0 0 12 3"/><path d="M10.26 13 4.2 16.5A9 9 0 0 0 19.8 16.5L13.74 13"/>'),
+  warning:_RICO('<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4M12 17h.01"/>'),
+  barrier:_RICO('<rect x="2" y="7" width="20" height="10" rx="1"/><path d="m4 7 6 10M10 7l6 10M16 7l4 6.5"/>'),
+  stop:_RICO('<path d="M8.5 2h7L22 8.5v7L15.5 22h-7L2 15.5v-7Z"/><path d="M9 9l6 6M15 9l-6 6"/>'),
+  // tools
+  wrench:_RICO('<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76Z"/>'),
+  hammer:_RICO('<path d="m15 12-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"/><path d="M17.6 15 22 10.6"/><path d="m20.9 11.7-1.2-1.25c-.6-.6-.94-1.4-.94-2.25v-.86L16 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h.86c.85 0 1.65.33 2.25.93l1.25 1.25"/>'),
+  gear:_RICO('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>'),
+  screwdriver:_RICO('<path d="M21 3 14 10l-1 4 4-1 7-7Z"/><path d="m13 11-7.5 7.5a2.12 2.12 0 0 0 3 3L16 14"/>'),
+  screw:_RICO('<circle cx="12" cy="12" r="9"/><path d="M9 8h6M9 12h6M9 16h6"/>'),
+  magnet:_RICO('<path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"/><path d="m5 8 4 4M12 15l4 4"/>'),
+  pickaxe:_RICO('<path d="M14.5 3.5a17 17 0 0 1 6 6M2 22l8-8M9.5 8.5a17 17 0 0 0-6-6"/><path d="M21 9.5a17 17 0 0 0-6-6"/>'),
+  // nature
+  tree:_RICO('<path d="M12 3 6 11h3l-4 6h14l-4-6h3z"/><path d="M12 17v5"/>'),
+  rock:_RICO('<path d="m8 3 4 8 5-5 5 15H2L8 3z"/>'),
+  cactus:_RICO('<path d="M10 21V9a2 2 0 0 1 4 0v12"/><path d="M10 13H7a2 2 0 0 1-2-2V9M14 11h3a2 2 0 0 0 2-2V8"/><path d="M8 21h8"/>'),
+  mushroom:_RICO('<path d="M21 10a9 9 0 1 0-18 0Z"/><path d="M12 10v7a2 2 0 0 0 4 0"/>'),
+  leaf:_RICO('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/>'),
+  // structures
+  door:_RICO('<path d="M13 4h3a2 2 0 0 1 2 2v14"/><path d="M2 20h20"/><path d="M5 20V5.5a2 2 0 0 1 1.5-1.94l4-1A2 2 0 0 1 13 4.56V20"/><path d="M10 12v.01"/>'),
+  house:_RICO('<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .71-1.53l7-6a2 2 0 0 1 2.58 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>'),
+  temple:_RICO('<path d="M12 2 3 7h18Z"/><path d="M5 7v11M9.5 7v11M14.5 7v11M19 7v11"/><path d="M3 21h18M4 18h16"/>'),
+  statue:_RICO('<circle cx="12" cy="5" r="2"/><path d="M9 21V11a3 3 0 0 1 6 0v10"/><path d="M7 21h10"/>'),
+  brick:_RICO('<rect x="2" y="4" width="20" height="16" rx="1"/><path d="M2 9h20M2 15h20M8 4v5M16 4v5M5 9v6M12 9v6M19 9v6M8 15v5M16 15v5"/>'),
+  // items
+  lightbulb:_RICO('<path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6M10 22h4"/>'),
+  flashlight:_RICO('<path d="M18 6c0 2-2 2-2 3.5V14a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V9.5C6 8 4 8 4 6V3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1Z"/><path d="M6 6h12M12 12h.01"/>'),
+  lantern:_RICO('<path d="M8 4h8M8 20h8"/><path d="M7 4c0 2 1 3 1 5v6c0 2-1 3-1 5M17 4c0 2-1 3-1 5v6c0 2 1 3 1 5"/><rect x="9" y="7" width="6" height="10" rx="1"/>'),
+  gem:_RICO('<path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/>'),
+  crown:_RICO('<path d="M2 6l4 4 6-7 6 7 4-4-2 13H4Z"/><path d="M4 19h16"/>'),
+  bell:_RICO('<path d="M10.3 21a2 2 0 0 0 3.4 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.4 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.4 5.96-2.74 7.33"/>'),
+  dice:_RICO('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/>'),
+  key:_RICO('<circle cx="7.5" cy="15.5" r="5.5"/><path d="m11.4 11.6 9.6-9.6M16 6l3 3M14 8l2.5 2.5"/>'),
+  shield:_RICO('<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67 0C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/>'),
+  rocket:_RICO('<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>'),
+  car:_RICO('<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>'),
+  tire:_RICO('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>'),
+  snowflake:_RICO('<path d="M2 12h20M12 2v20"/><path d="m20 16-4-4 4-4M4 8l4 4-4 4M16 4l-4 4-4-4M8 20l4-4 4 4"/>'),
+  battery:_RICO('<rect x="2" y="7" width="16" height="10" rx="2"/><path d="M22 11v2"/><path d="M6 10v4M10 10v4"/>'),
+  target:_RICO('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.5"/>'),
+  anvil:_RICO('<path d="M3 9h12a4 4 0 0 1-4 4H9l-1 4h8l-1-4"/><path d="M3 9V7h4l2 2"/><path d="M7 17h8v3H7z"/>'),
+};
+const RADIAL_ICONS = Object.keys(RADIAL_ICON_SVG);
+function _escHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function radialIconHTML(icon){
+  if(RADIAL_ICON_SVG[icon]) return RADIAL_ICON_SVG[icon];   // a known SVG icon (trusted built-in)
+  // backward-compat: an old emoji glyph or custom text \u2014 HTML-escape it so nothing user-authored is injected
+  return '<span class="radGlyph">'+_escHtml(icon||'\u25c6')+'</span>';
+}
 function _sanitizeRadial(arr){
   if(!Array.isArray(arr) || !arr.length) return DEFAULT_RADIAL.map(s=>Object.assign({}, s));
   const out=[];
@@ -15472,7 +15541,7 @@ function _sanitizeRadial(arr){
     out.push({
       src:   (typeof s.src==='string' && s.src) ? s.src : 'box',
       label: (typeof s.label==='string' && s.label) ? s.label.slice(0,18) : 'Prop',
-      icon:  (typeof s.icon==='string' && s.icon) ? s.icon.slice(0,4) : '\u25c6',
+      icon:  (typeof s.icon==='string' && s.icon) ? s.icon.slice(0,24) : 'box',   // an SVG icon key (build 676), or a legacy glyph
       exp:   !!s.exp,
       col:   (s.col!=null && isFinite(+s.col)) ? ((+s.col)&0xffffff) : null,
       tex:   (typeof s.tex==='string') ? s.tex : '',
@@ -15491,7 +15560,7 @@ function openRadial(){
   if(host){ host.innerHTML=''; const N=radialCfg.length;
     radialCfg.forEach((it,i)=>{ const a=(-90 + i*(360/N))*Math.PI/180, x=Math.cos(a)*RADIAL_R, y=Math.sin(a)*RADIAL_R;
       const d=document.createElement('div'); d.className='radItem'; d.dataset.i=i; d.style.left='calc(50% + '+x+'px)'; d.style.top='calc(50% + '+y+'px)';
-      d.innerHTML='<div class="radIcon">'+it.icon+'</div><div class="radName">'+it.label+'</div>'; host.appendChild(d); });
+      d.innerHTML='<div class="radIcon">'+radialIconHTML(it.icon)+'</div><div class="radName">'+_escHtml(it.label)+'</div>'; host.appendChild(d); });
   }
   const r=document.getElementById('radial'); if(r) r.style.display='block';
   updateRadialSel();
@@ -19321,24 +19390,26 @@ function renderBuildMenuPanel(){
     sel.onchange=()=>{ touch(); if(sel.value==='__model'){ s.src = isModelSrc(s.src)?s.src:''; } else { s.src=sel.value; } renderBuildMenuPanel(); };
     row('Type', sel);
     let labelInput=null;   // referenced by the model-search pick to live-update the label field
-    // custom-model controls: a URL field + an in-editor Poly Pizza / Sketchfab search for this slot
-    if(!isPrim || sel.value==='__model'){ const u=document.createElement('input'); u.type='text'; u.placeholder='https://…/model.glb'; u.value=isModelSrc(s.src)?s.src:''; u.style.cssText='flex:1 1 auto;min-width:0;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; u.onchange=()=>{ touch(); s.src=u.value.trim()||'box'; }; const r=document.createElement('div'); r.style.cssText='display:flex;margin:3px 0;'; r.appendChild(u); card.appendChild(r);
+    // custom-model controls — ALWAYS available (build 676), so any slot can search a library or paste a .glb.
+    // Picking/pasting a model overrides the shape above; clearing it falls back to the chosen shape.
+    { const sub=document.createElement('div'); sub.className='hint'; sub.style.cssText='margin:5px 0 1px;font-size:10px;opacity:.75;'; sub.textContent='Custom model — search a library or paste a .glb URL (overrides the shape):'; card.appendChild(sub);
+      const u=document.createElement('input'); u.type='text'; u.placeholder='https://…/model.glb'; u.value=isModelSrc(s.src)?s.src:''; u.style.cssText='flex:1 1 auto;min-width:0;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; u.onchange=()=>{ touch(); const v=u.value.trim(); s.src = v || (RADIAL_PRIMS.indexOf(s.src)>=0?s.src:'box'); renderBuildMenuPanel(); }; const r=document.createElement('div'); r.style.cssText='display:flex;margin:2px 0;'; r.appendChild(u); card.appendChild(r);
       const sBtn=document.createElement('button'); sBtn.textContent='Search Poly Pizza / Sketchfab'; sBtn.style.cssText='font-size:11px;padding:2px 8px;margin:0 0 4px;width:100%;';
       const sBox=document.createElement('div'); sBox.style.cssText='display:none;border:1px solid #24323a;border-radius:6px;padding:6px;margin:0 0 5px;background:#080d10;'; let mounted=false;
       sBtn.onclick=()=>{ const open=sBox.style.display!=='none'; if(open){ sBox.style.display='none'; sBtn.style.background=''; return; } sBox.style.display='block'; sBtn.style.background='rgba(56,245,181,0.22)';
         if(!mounted){ mounted=true; renderModelSearch(sBox, (m,st)=>{ if(!m||!m.glb) return; touch(); s.src=m.glb; u.value=m.glb; if((!s.label||s.label==='Prop') && m.title){ s.label=m.title.slice(0,18); if(labelInput) labelInput.value=s.label; } if(st) st.textContent='Slot '+(i+1)+' → '+(m.title||'model'); }, { placeholder:'search models for this slot…' }); } };
       card.appendChild(sBtn); card.appendChild(sBox); }
-    // label + icon — type a glyph or pick one from the prebuilt palette
+    // label + icon — pick from the prebuilt SVG icon set (legacy emoji glyphs still render)
     { const li=document.createElement('input'); li.type='text'; li.value=s.label; li.maxLength=18; li.style.cssText='flex:0 0 auto;width:96px;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 5px;font-size:11px;'; li.onchange=()=>{ touch(); s.label=li.value.slice(0,18)||'Prop'; }; labelInput=li;
-      const ic=document.createElement('input'); ic.type='text'; ic.value=s.icon; ic.maxLength=4; ic.title='Icon shown in the wheel — type one or pick below'; ic.style.cssText='flex:0 0 auto;width:40px;text-align:center;background:#05080b;border:1px solid #2a3a42;color:#d6f5e8;border-radius:4px;padding:2px 4px;font-size:15px;';
-      const markIcons=()=>{ for(const b of (grid._btns||[])){ const on=(b.dataset.g===s.icon); b.style.background=on?'rgba(56,245,181,0.30)':'#0c1418'; b.style.borderColor=on?'var(--accent)':'#24323a'; } };
-      ic.onchange=()=>{ touch(); s.icon=ic.value.slice(0,4)||'◆'; markIcons(); };
-      const pickBtn=document.createElement('button'); pickBtn.textContent='Icons'; pickBtn.title='Pick from the icon palette'; pickBtn.style.cssText='font-size:11px;padding:1px 8px;flex:0 0 auto;';
-      const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0;'; r.appendChild(lbl('Label / icon')); r.appendChild(li); r.appendChild(ic); r.appendChild(pickBtn); card.appendChild(r);
-      const grid=document.createElement('div'); grid.style.cssText='display:none;grid-template-columns:repeat(10,1fr);gap:3px;margin:2px 0 5px;max-height:132px;overflow:auto;border:1px solid #24323a;border-radius:6px;padding:5px;background:#080d10;'; grid._btns=[];
-      for(const g of RADIAL_ICONS){ const b=document.createElement('button'); b.textContent=g; b.dataset.g=g; b.style.cssText='font-size:17px;line-height:1;padding:3px 0;background:#0c1418;border:1px solid #24323a;border-radius:5px;cursor:pointer;'; b.onclick=()=>{ touch(); s.icon=g; ic.value=g; markIcons(); }; grid._btns.push(b); grid.appendChild(b); }
+      const prev=document.createElement('div'); prev.style.cssText='width:30px;height:30px;display:flex;align-items:center;justify-content:center;color:var(--accent);background:#05080b;border:1px solid #2a3a42;border-radius:4px;flex:0 0 auto;';
+      const setPrev=()=>{ prev.innerHTML=radialIconHTML(s.icon); const sv=prev.querySelector('svg'); if(sv){ sv.setAttribute('width','22'); sv.setAttribute('height','22'); } };
+      const pickBtn=document.createElement('button'); pickBtn.textContent='Pick icon'; pickBtn.title='Choose an icon from the palette'; pickBtn.style.cssText='font-size:11px;padding:1px 8px;flex:0 0 auto;';
+      const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0;'; r.appendChild(lbl('Label / icon')); r.appendChild(li); r.appendChild(prev); r.appendChild(pickBtn); card.appendChild(r);
+      const grid=document.createElement('div'); grid.style.cssText='display:none;grid-template-columns:repeat(8,1fr);gap:4px;margin:2px 0 5px;max-height:152px;overflow:auto;border:1px solid #24323a;border-radius:6px;padding:6px;background:#080d10;'; grid._btns=[];
+      const markIcons=()=>{ for(const b of grid._btns){ const on=(b.dataset.g===s.icon); b.style.background=on?'rgba(56,245,181,0.30)':'#0c1418'; b.style.borderColor=on?'var(--accent)':'#24323a'; b.style.color=on?'var(--accent)':'#cfeee2'; } };
+      for(const g of RADIAL_ICONS){ const b=document.createElement('button'); b.dataset.g=g; b.title=g; b.style.cssText='display:flex;align-items:center;justify-content:center;padding:5px 0;background:#0c1418;border:1px solid #24323a;border-radius:5px;cursor:pointer;color:#cfeee2;'; b.innerHTML=RADIAL_ICON_SVG[g]; const sv=b.querySelector('svg'); if(sv){ sv.setAttribute('width','20'); sv.setAttribute('height','20'); } b.onclick=()=>{ touch(); s.icon=g; setPrev(); markIcons(); }; grid._btns.push(b); grid.appendChild(b); }
       pickBtn.onclick=()=>{ const open=grid.style.display!=='none'; grid.style.display=open?'none':'grid'; pickBtn.style.background=open?'':'rgba(56,245,181,0.22)'; if(!open) markIcons(); };
-      card.appendChild(grid); markIcons(); }
+      card.appendChild(grid); setPrev(); markIcons(); }
     // colour (tint) + texture
     { const wrap2=document.createElement('div'); wrap2.style.cssText='display:flex;align-items:center;gap:6px;flex:0 0 auto;';
       const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=s.col!=null; cb.title='Tint this prop'; cb.style.cssText='width:14px;height:14px;accent-color:var(--accent);';
