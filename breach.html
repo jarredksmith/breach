@@ -8291,6 +8291,7 @@ let gameCfg = {
   unarmed: !!(savedLevel && savedLevel.game && savedLevel.game.unarmed),        // start with fists only (no guns)
   allowPickup: (savedLevel && savedLevel.game && savedLevel.game.allowPickup!=null) ? !!savedLevel.game.allowPickup : true,   // can still pick up weapons found in the level
   flashlight: !!(savedLevel && savedLevel.game && savedLevel.game.flashlight),  // a toggleable held flashlight (press L)
+  flashCfg: _sanitizeFlash(savedLevel && savedLevel.game && savedLevel.game.flash),   // build 677: tunable beam (brightness/cone/softness/range/colour)
   // Confine multiplayer/bot random spawns to a region (e.g. inside an arena prop) instead of the whole map.
   // shape 'circle' (x,z,r) or 'poly' (a clicked outline of {x,z} points) — poly handles odd-shaped arenas.
   spawnRegion: {
@@ -9003,15 +9004,40 @@ function _animFists(){
 }
 // Held flashlight: a spotlight parented to the camera (lights where you look). Lazily created; off = intensity 0.
 let flashlightOn=false, _flashlight=null;
+// build 677: the held flashlight is tunable per level (brightness / cone / edge softness / range / colour).
+function _sanitizeFlash(f){
+  f = (f && typeof f==='object') ? f : {};
+  const num=(v,d,lo,hi)=>{ v=+v; return isFinite(v)?Math.max(lo,Math.min(hi,v)):d; };
+  return {
+    intensity: num(f.intensity, 6, 0.5, 20),    // brightness
+    angle:     num(f.angle, 28, 8, 60),         // cone half-angle, in DEGREES
+    penumbra:  num(f.penumbra, 0.45, 0, 1),     // edge softness (0 hard .. 1 feathered)
+    distance:  num(f.distance, 46, 5, 150),     // throw / range, in metres
+    color:     (f.color!=null && isFinite(+f.color)) ? ((+f.color)&0xffffff) : 0xfff0d4,
+  };
+}
 function ensureFlashlight(){
   if(_flashlight) return;
-  _flashlight=new THREE.SpotLight(0xfff0d4, 0, 46, Math.PI/6.5, 0.45, 1.1);
+  const fc = gameCfg.flashCfg || (gameCfg.flashCfg=_sanitizeFlash(null));
+  _flashlight=new THREE.SpotLight(fc.color, 0, fc.distance, fc.angle*Math.PI/180, fc.penumbra, 1.1);
   const tgt=new THREE.Object3D(); tgt.position.set(0,0,-1); camera.add(_flashlight); camera.add(tgt); _flashlight.target=tgt;
   _flashlight.position.set(0.18,-0.12,0.1); _flashlight.visible=false; _flashlight.castShadow=false;
 }
+// Push the current flashCfg onto the live light (used by the editor sliders for instant feedback).
+function applyFlashCfg(){
+  if(!_flashlight) return;
+  const fc = gameCfg.flashCfg || (gameCfg.flashCfg=_sanitizeFlash(null));
+  _flashlight.color.setHex(fc.color);
+  _flashlight.distance = fc.distance;
+  _flashlight.angle = fc.angle*Math.PI/180;
+  _flashlight.penumbra = fc.penumbra;
+  if(flashlightOn) _flashlight.intensity = fc.intensity;
+}
 function toggleFlashlight(){
   if(!gameCfg.flashlight) return;
-  ensureFlashlight(); flashlightOn=!flashlightOn; _flashlight.visible=flashlightOn; _flashlight.intensity=flashlightOn?6:0;
+  ensureFlashlight(); flashlightOn=!flashlightOn; _flashlight.visible=flashlightOn;
+  const fc = gameCfg.flashCfg || (gameCfg.flashCfg=_sanitizeFlash(null));
+  _flashlight.intensity = flashlightOn ? fc.intensity : 0;
   if(typeof SFX!=='undefined' && SFX.swap) SFX.swap();
 }
 const _muzNdc = new THREE.Vector2();
@@ -12176,7 +12202,7 @@ function loadLevelFromNet(level){
   if(level.audio && NET.mode!=='client'){ try{ audioSettings.musicUrl=(typeof level.audio.musicUrl==='string')?level.audio.musicUrl:''; audioSettings.sounds=_sanitizeSounds(level.audio.sounds); if(typeof saveAudioSettings==='function') saveAudioSettings(); if(typeof preloadCustomSounds==='function') preloadCustomSounds(); if(_musicOn){ stopMusic(); startMusic(); } }catch(e){ console.warn('level audio apply failed', e); } }
   _applyCine(level.cine);
   // per-player characters: the client keeps its own avatar; the host's character arrives via the welcome 'char' field
-  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight;
+  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg();
       if(level.game.spawnRegion){ const _sr=level.game.spawnRegion; gameCfg.spawnRegion = { on:!!_sr.on, shape:_sr.shape||'circle', x:+_sr.x||0, z:+_sr.z||0, r:(_sr.r!=null?+_sr.r:30), poly:Array.isArray(_sr.poly)?_sr.poly.map(p=>({x:+p.x||0,z:+p.z||0})):[] }; } else { gameCfg.spawnRegion = { on:false, shape:'circle', x:0, z:0, r:30, poly:[] }; } }
   extractSpot = level.extract ? { x:level.extract.x||0, z:level.extract.z||0 } : null; if(level.extractFx){ extractFxCfg.color=level.extractFx.color!=null?level.extractFx.color:extractFxCfg.color; extractFxCfg.opacity=level.extractFx.opacity!=null?level.extractFx.opacity:extractFxCfg.opacity; extractFxCfg.height=level.extractFx.height!=null?level.extractFx.height:extractFxCfg.height; extractFxCfg.pillar=level.extractFx.pillar!=null?!!level.extractFx.pillar:extractFxCfg.pillar; if(typeof applyExtractFx==='function') applyExtractFx(); } if(typeof refreshExtractMarker==='function') refreshExtractMarker();   // restore the per-level extraction spot (campaign / co-op load path)
   audioZones = Array.isArray(level.audioZones) ? level.audioZones.map(z=>({ x:+z.x||0, z:+z.z||0, r:+z.r||14, url:z.url||'', vol:(z.vol!=null?+z.vol:0.8), loop:z.loop!==false })) : [];
@@ -14754,7 +14780,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 676 · 2026-06-24';
+const BUILD_VERSION = 'build 677 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19211,7 +19237,7 @@ function serializeLevel(){
     roster: charRoster.map(c=>({ name:c.name, url:c.url, scale:c.scale, face:c.face, rx:c.rx, rz:c.rz, xoff:c.xoff, yoff:c.yoff, zoff:c.zoff, thumb:c.thumb||'', clips:Object.assign({},c.clips||{}), clipSpeed:Object.assign({},c.clipSpeed||{}), clipHold:Object.assign({},c.clipHold||{}), clipInPlace:Object.assign({},c.clipInPlace||{}), grip:_sanitizeGripMap(c.grip), view:_sanitizeView(c.view) })),
     pickupModels: Object.keys(pickupModels).reduce((a,k)=>{ const m=pickupModels[k]; if(m&&m.url){ a[k]={ url:m.url, scale:m.scale||1 }; } return a; }, {}),
     keyNames: Object.keys(keyNames).reduce((a,k)=>{ const n=(keyNames[k]||'').trim(); if(n) a[k]=n; return a; }, {}),
-    game:    { mode: gameCfg.mode, winWaves: gameCfg.winWaves, upgrades: gameCfg.upgrades !== false, objective: gameCfg.objective, surviveSecs: gameCfg.surviveSecs, extractHold: gameCfg.extractHold, extractRadius: gameCfg.extractRadius, bossWave: gameCfg.bossWave, noRespawn: !!gameCfg.noRespawn, unarmed: !!gameCfg.unarmed, allowPickup: gameCfg.allowPickup!==false, flashlight: !!gameCfg.flashlight, spawnRegion: { on: !!gameCfg.spawnRegion.on, shape: gameCfg.spawnRegion.shape||'circle', x: +gameCfg.spawnRegion.x, z: +gameCfg.spawnRegion.z, r: +gameCfg.spawnRegion.r, poly: (gameCfg.spawnRegion.poly||[]).map(p=>({ x:+p.x, z:+p.z })) } , fallDamage: { on: !!gameCfg.fallDamage.on, player: gameCfg.fallDamage.player!==false, ai: gameCfg.fallDamage.ai!==false, minSpeed: +gameCfg.fallDamage.minSpeed, perUnit: +gameCfg.fallDamage.perUnit }, crushDamage: { on: !!gameCfg.crushDamage.on, player: gameCfg.crushDamage.player!==false, ai: gameCfg.crushDamage.ai!==false, minSpeed: +gameCfg.crushDamage.minSpeed, perUnit: +gameCfg.crushDamage.perUnit }, crosshair: { style: gameCfg.crosshair.style, size: +gameCfg.crosshair.size, thickness: +gameCfg.crosshair.thickness, gap: +gameCfg.crosshair.gap, dot: !!gameCfg.crosshair.dot, color: gameCfg.crosshair.color } },
+    game:    { mode: gameCfg.mode, winWaves: gameCfg.winWaves, upgrades: gameCfg.upgrades !== false, objective: gameCfg.objective, surviveSecs: gameCfg.surviveSecs, extractHold: gameCfg.extractHold, extractRadius: gameCfg.extractRadius, bossWave: gameCfg.bossWave, noRespawn: !!gameCfg.noRespawn, unarmed: !!gameCfg.unarmed, allowPickup: gameCfg.allowPickup!==false, flashlight: !!gameCfg.flashlight, flash: { intensity:+gameCfg.flashCfg.intensity, angle:+gameCfg.flashCfg.angle, penumbra:+gameCfg.flashCfg.penumbra, distance:+gameCfg.flashCfg.distance, color:gameCfg.flashCfg.color }, spawnRegion: { on: !!gameCfg.spawnRegion.on, shape: gameCfg.spawnRegion.shape||'circle', x: +gameCfg.spawnRegion.x, z: +gameCfg.spawnRegion.z, r: +gameCfg.spawnRegion.r, poly: (gameCfg.spawnRegion.poly||[]).map(p=>({ x:+p.x, z:+p.z })) } , fallDamage: { on: !!gameCfg.fallDamage.on, player: gameCfg.fallDamage.player!==false, ai: gameCfg.fallDamage.ai!==false, minSpeed: +gameCfg.fallDamage.minSpeed, perUnit: +gameCfg.fallDamage.perUnit }, crushDamage: { on: !!gameCfg.crushDamage.on, player: gameCfg.crushDamage.player!==false, ai: gameCfg.crushDamage.ai!==false, minSpeed: +gameCfg.crushDamage.minSpeed, perUnit: +gameCfg.crushDamage.perUnit }, crosshair: { style: gameCfg.crosshair.style, size: +gameCfg.crosshair.size, thickness: +gameCfg.crosshair.thickness, gap: +gameCfg.crosshair.gap, dot: !!gameCfg.crosshair.dot, color: gameCfg.crosshair.color } },
     dmgNum:  { on: dmgNumCfg.on !== false, size: dmgNumCfg.size, hit: dmgNumCfg.hitColor, kill: dmgNumCfg.killColor },
     pstart:  { x: playerSpawn.x, y: playerSpawn.y||0, z: playerSpawn.z, yaw: playerSpawn.yaw },
     extract: extractSpot ? { x: +extractSpot.x.toFixed(3), z: +extractSpot.z.toFixed(3) } : null,
@@ -19687,7 +19713,7 @@ function restoreLevel(level){
   // enemy spawns
   for(let i=spawnMarkers.length-1;i>=0;i--) removeSpawnMarker(i);
   if(Array.isArray(level.spawns)){ for(const sp of level.spawns) buildSpawnMarker(sp); } setSpawnMarkersVisible(editorOpen);
-  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight;
+  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg();
       if(level.game.spawnRegion){ const _sr=level.game.spawnRegion; gameCfg.spawnRegion = { on:!!_sr.on, shape:_sr.shape||'circle', x:+_sr.x||0, z:+_sr.z||0, r:(_sr.r!=null?+_sr.r:30), poly:Array.isArray(_sr.poly)?_sr.poly.map(p=>({x:+p.x||0,z:+p.z||0})):[] }; } else { gameCfg.spawnRegion = { on:false, shape:'circle', x:0, z:0, r:30, poly:[] }; } }
   if(level.dmgNum){ const d=level.dmgNum; dmgNumCfg.on = d.on!==false; if(d.size) dmgNumCfg.size=+d.size; if(d.hit) dmgNumCfg.hitColor=d.hit; if(d.kill) dmgNumCfg.killColor=d.kill; }
   if(level.pstart){ playerSpawn.x=level.pstart.x||0; playerSpawn.z=level.pstart.z||0; playerSpawn.y=level.pstart.y||0; playerSpawn.yaw=level.pstart.yaw||0; } else { playerSpawn.x=0; playerSpawn.z=0; playerSpawn.y=0; playerSpawn.yaw=0; }
@@ -21187,7 +21213,18 @@ function renderEditorFields(){
     const _chk=(label, checked, on)=>{ const lab=document.createElement('label'); lab.style.cssText='display:flex;align-items:center;gap:7px;color:#9fe6cf;font-size:12px;margin:2px 0;cursor:pointer;'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!checked; cb.style.cssText='width:15px;height:15px;accent-color:var(--accent);cursor:pointer;'; cb.onchange=()=>{ pushUndoSnapshot(); on(cb.checked); }; const sp=document.createElement('span'); sp.innerHTML=label; lab.appendChild(cb); lab.appendChild(sp); gHost.appendChild(lab); return cb; };
     _chk('<b>Start unarmed</b> (fists only — punch, carry, no guns)', gameCfg.unarmed, v=>{ gameCfg.unarmed=v; renderEditorFields(); });
     if(gameCfg.unarmed) _chk('Allow picking up weapons found in the level', gameCfg.allowPickup!==false, v=>{ gameCfg.allowPickup=v; });
-    _chk('<b>Flashlight</b> (players toggle a held light with <b>L</b>)', gameCfg.flashlight, v=>{ gameCfg.flashlight=v; });
+    _chk('<b>Flashlight</b> (players toggle a held light with <b>L</b>)', gameCfg.flashlight, v=>{ gameCfg.flashlight=v; renderEditorFields(); });
+    if(gameCfg.flashlight){
+      if(!gameCfg.flashCfg) gameCfg.flashCfg=_sanitizeFlash(null);
+      const fc=gameCfg.flashCfg;
+      const _flRow=(label, min, max, step, get, set, fmt)=>{ const w=document.createElement('div'); w.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0 3px 22px;color:#9fe6cf;font-size:12px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.cssText='flex:0 0 92px;'; const rr=document.createElement('input'); rr.type='range'; rr.min=String(min); rr.max=String(max); rr.step=String(step); rr.value=String(get()); rr.style.cssText='flex:1 1 auto;accent-color:var(--accent);'; const nn=document.createElement('span'); nn.style.cssText='flex:0 0 44px;text-align:right;color:#cfeee2;'; nn.textContent=fmt(get()); rr.addEventListener('pointerdown',()=>pushUndoSnapshot()); rr.oninput=()=>{ set(+rr.value); nn.textContent=fmt(+rr.value); if(typeof applyFlashCfg==='function') applyFlashCfg(); _levelDirty=true; }; w.appendChild(sp); w.appendChild(rr); w.appendChild(nn); gHost.appendChild(w); };
+      _flRow('Brightness', 0.5, 20, 0.5, ()=>fc.intensity, v=>fc.intensity=v, v=>v.toFixed(1));
+      _flRow('Cone angle', 8, 60, 1, ()=>fc.angle, v=>fc.angle=v, v=>Math.round(v)+'°');
+      _flRow('Edge softness', 0, 1, 0.05, ()=>fc.penumbra, v=>fc.penumbra=v, v=>Math.round(v*100)+'%');
+      _flRow('Range', 5, 150, 1, ()=>fc.distance, v=>fc.distance=v, v=>Math.round(v)+'m');
+      const cw=document.createElement('div'); cw.style.cssText='display:flex;align-items:center;gap:8px;margin:3px 0 3px 22px;color:#9fe6cf;font-size:12px;'; const cs=document.createElement('span'); cs.textContent='Beam colour'; cs.style.cssText='flex:0 0 92px;'; const ci=document.createElement('input'); ci.type='color'; ci.value='#'+(fc.color>>>0).toString(16).padStart(6,'0').slice(-6); ci.style.cssText='width:42px;height:24px;padding:0;border:1px solid #2a3a42;border-radius:4px;background:#0c1418;cursor:pointer;'; ci.oninput=()=>{ pushUndoSnapshot(); fc.color=parseInt(ci.value.slice(1),16); if(typeof applyFlashCfg==='function') applyFlashCfg(); _levelDirty=true; }; cw.appendChild(cs); cw.appendChild(ci); gHost.appendChild(cw);
+      hint(gHost, '', '1px 0 5px').textContent='Tune the held beam — players see it the moment they press L in your level.';
+    }
     hint(gHost, '', '2px 0 6px').textContent = 'Unarmed: left-click punches, G grabs/carries/throws objects. Great for fist-fights, adventure & puzzle levels.';
     // hit-number look
     hint(gHost, '<b>Hit numbers</b>', '12px 0 4px');

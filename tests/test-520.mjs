@@ -27,7 +27,7 @@ const ma = extractFunction('meleeAttack');
 assert(/if\(wep && wep\.fists && typeof _punchFists==='function'\) _punchFists\(\);/.test(ma), 'a fist melee triggers the punch lunge');
 
 // --- held flashlight (L), gated on the level enabling it ---
-assert(/function ensureFlashlight\(\)\{/.test(src) && /new THREE\.SpotLight\(0xfff0d4/.test(src), 'a camera-parented flashlight spotlight');
+assert(/function ensureFlashlight\(\)\{/.test(src) && /new THREE\.SpotLight\(fc\.color/.test(src), 'a camera-parented flashlight spotlight');
 const tf = extractFunction('toggleFlashlight');
 assert(/if\(!gameCfg\.flashlight\) return;/.test(tf), 'the flashlight only works when the level enables it');
 assert(/if\(e\.code==='KeyL' && !e\.repeat\) toggleFlashlight\(\);/.test(src), 'L toggles the flashlight');
