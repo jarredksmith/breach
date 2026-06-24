@@ -24,7 +24,7 @@ const sw = extractFunction('showWeaponModel');
 assert(/const isFists = !\(WEAPONS\[key\] && WEAPONS\[key\]\.model\) && \(key==='hands' \|\| \(WEAPONS\[key\] && WEAPONS\[key\]\.fists\)\);/.test(sw), 'showWeaponModel swaps to the fists viewmodel (unless a custom model overrides it)');
 assert(/if\(isFists\)\{[\s\S]*?gunModel=null; sight=null;[\s\S]*?return; \}/.test(sw), 'fists hide every gun model');
 const ma = extractFunction('meleeAttack');
-assert(/if\(wep && wep\.fists && typeof _punchFists==='function'\) _punchFists\(\);/.test(ma), 'a fist melee triggers the punch lunge');
+assert(/if\(wep && wep\.fists\)\{[\s\S]*?_punchFists\(\);[\s\S]*?triggerFistAnim\(_fistSide<0 \? 'punchL' : 'punchR'\);[\s\S]*?\}/.test(ma), 'a fist melee alternates the punch + plays the mapped clip');
 
 // --- held flashlight (L), gated on the level enabling it ---
 assert(/function ensureFlashlight\(\)\{/.test(src) && /new THREE\.SpotLight\(fc\.color/.test(src), 'a camera-parented flashlight spotlight');

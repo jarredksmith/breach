@@ -6743,7 +6743,40 @@ function _rebuildGunStates(key){
   const model=gunModelByWep[key]; if(!model) return;
   const gltf=gltfCache[wepModelUrl(key)]; if(!gltf) return;
   const om=model.userData.mixer; if(om){ try{ om.stopAllAction(); }catch(e){} const mi=mixers.indexOf(om); if(mi>=0) mixers.splice(mi,1); model.userData.mixer=null; model.userData.gunStates=null; model.userData.animActions=null; }
-  if(!playGunStates(model, gltf, WEAPONS[key].clips)) playModelAnimations(model, gltf);
+  if(!_playWepStates(key, model, gltf)) playModelAnimations(model, gltf);
+}
+// build 678: a fists weapon animates on a different state set than a gun — idle loops, punchR/punchL alternate as
+// you swing, and grab plays when you grab/carry. Imported hands models map their own clips to these slots.
+const _FIST_STATES = ['idle','punchR','punchL','grab'];
+const _FIST_LABEL = { idle:'idle', punchR:'punch R', punchL:'punch L', grab:'grab' };
+const _FIST_CLIP_RE = { idle:/idle|pose|stand|breath|rest/i, punchR:/(punch).*(r\b|right)|(r\b|right).*(punch)|jab|cross|\bpunch\b|attack|hit|strike/i, punchL:/(punch).*(l\b|left)|(l\b|left).*(punch)|hook/i, grab:/grab|pick|grasp|carry|take|hold|lift/i };
+function _isFistsWep(k){ return !!(WEAPONS[k] && WEAPONS[k].fists); }
+function _wepClipBlank(k){ return _isFistsWep(k) ? { idle:'', punchR:'', punchL:'', grab:'' } : { idle:'', shoot:'', reload:'' }; }
+function _playWepStates(key, model, gltf){ return _isFistsWep(key) ? playFistStates(model, gltf, WEAPONS[key].clips) : playGunStates(model, gltf, WEAPONS[key].clips); }
+function playFistStates(root, gltf, clips){
+  if(!gltf || !gltf.animations || !gltf.animations.length) return null;
+  const find=(st)=>{ const want=clips&&clips[st]; if(want){ const c=gltf.animations.find(a=>(a.name||'')===want); if(c) return c; } const re=_FIST_CLIP_RE[st]; return (re&&gltf.animations.find(a=>re.test(a.name||'')))||null; };
+  const idle=find('idle'); let pr=find('punchR'), pl=find('punchL'), gb=find('grab');
+  if(!pl && pr) pl=pr;   // only one punch clip -> use it for both sides
+  if(!pr && pl) pr=pl;
+  if(!idle && !pr && !pl && !gb) return null;   // nothing recognizable -> caller falls back to loop-all
+  const mixer=new THREE.AnimationMixer(root); const acts={};
+  if(idle){ acts.idle=mixer.clipAction(idle); acts.idle.loop=THREE.LoopRepeat; acts.idle.play(); }
+  for(const [st,clip] of [['punchR',pr],['punchL',pl],['grab',gb]]){ if(!clip) continue; const a=mixer.clipAction(clip); a.loop=THREE.LoopOnce; a.clampWhenFinished=false; acts[st]=a; a.userData={ dur: clip.duration||0.001 }; }
+  mixer.addEventListener('finished',(e)=>{ if(acts.idle && e.action!==acts.idle){ e.action.stop(); acts.idle.reset().play(); } });
+  mixers.push(mixer); root.userData.mixer=mixer; root.userData.gunStates=acts; root.userData.fistStates=true;
+  return mixer;
+}
+// Fire a one-shot fist clip (punchR / punchL / grab) on the active fists model, if it has one. Returns true if played.
+function triggerFistAnim(st){
+  const model=gunModelByWep[curWep]; const acts=model && model.userData && model.userData.gunStates; const a=acts && acts[st];
+  if(!a) return false;
+  if(acts.idle) acts.idle.stop();
+  for(const k of ['punchR','punchL','grab']){ if(acts[k] && acts[k]!==a) acts[k].stop(); }
+  const dur=(a.userData&&a.userData.dur)||0.001, win=Math.max(0.08, (st==='grab'?0.35:0.22));
+  a.timeScale=Math.min(4, Math.max(0.4, dur/win));
+  a.reset().play();
+  return true;
 }
 // Enemies play ONE looping clip (prefer idle/walk/run, else the first). Playing every clip at once —
 // as props do — makes character rigs fight over the root transform and look broken.
@@ -9000,7 +9033,10 @@ function _animFists(){
   if(!_fistsVM || !_fistsVM.visible) return;
   _fistPunch=Math.max(0, _fistPunch-0.085);
   const f=_fistSide<0?_fistsVM.userData.L:_fistsVM.userData.R, o=_fistSide<0?_fistsVM.userData.R:_fistsVM.userData.L, k=_fistPunch;
-  f.position.z=-0.6 - k*0.5; f.position.y=-0.42 + k*0.05; o.position.z=-0.6; o.position.y=-0.42;
+  // build 678: a rotational jab (cock + snap) — no built-in forward lunge. Imported punch clips drive real motion;
+  // these bare procedural fists just nod so there's still feedback when no hands model is mapped.
+  f.rotation.x=-0.18 - k*1.15; f.position.y=-0.42 + k*0.05; f.position.z=-0.6;
+  o.rotation.x=-0.18; o.position.y=-0.42; o.position.z=-0.6;
 }
 // Held flashlight: a spotlight parented to the camera (lights where you look). Lazily created; off = intensity 0.
 let flashlightOn=false, _flashlight=null;
@@ -9131,7 +9167,7 @@ function showWeaponModel(key){
       model.visible = (key === curWep);          // only show if it's still the active weapon
       if(model.visible){ if(gunPlaceholder) gunPlaceholder.visible=false; gunModel = model; sight = null; }
       _gunClipNames[key] = (gltf.animations||[]).map(c=>c.name||'');
-      if(!playGunStates(model, gltf, WEAPONS[key].clips)) playModelAnimations(model, gltf);   // idle/shoot/reload states when recognizable, else the old loop-everything
+      if(!_playWepStates(key, model, gltf)) playModelAnimations(model, gltf);   // gun idle/shoot/reload OR fist idle/punchR/punchL/grab, else the old loop-everything
       if(model.visible) applyWepView(model, key);   // reassert this weapon's own framing once it's live
       console.log('Weapon model loaded:', key, url);
     },
@@ -9211,7 +9247,7 @@ const WEAPONS = {
 const GUN_BASE_DMG = {}; for(const _k in WEAPONS) GUN_BASE_DMG[_k] = WEAPONS[_k].dmg;
 // Restore per-weapon model + framing saved to localStorage (serialized under "weapons"). Without this the
 // hardcoded model:''/view:null above would wipe gun edits on every reload.
-if(savedLevel && savedLevel.weapons){ for(const k in WEAPONS){ const wd = savedLevel.weapons[k]; if(wd){ WEAPONS[k].model = wd.model || ''; WEAPONS[k].view = wd.view || null; if(wd.dmg!=null) WEAPONS[k].dmg = +wd.dmg; if(wd.clips) WEAPONS[k].clips = Object.assign({idle:'',shoot:'',reload:''}, wd.clips); } } }
+if(savedLevel && savedLevel.weapons){ for(const k in WEAPONS){ const wd = savedLevel.weapons[k]; if(wd){ WEAPONS[k].model = wd.model || ''; WEAPONS[k].view = wd.view || null; if(wd.dmg!=null) WEAPONS[k].dmg = +wd.dmg; if(wd.clips) WEAPONS[k].clips = Object.assign(_wepClipBlank(k), wd.clips); } } }
 let owned = ['rifle'];           // weapons the player has
 let curWep = 'rifle';            // current weapon key
 loadGunModel();                  // load the starting weapon's viewmodel (now that WEAPONS/curWep exist)
@@ -12215,7 +12251,7 @@ function loadLevelFromNet(level){
   charRoster = Array.isArray(level.roster) ? level.roster.map(_sanitizeCharCfg) : []; if(typeof renderCharRosterPanel==='function') renderCharRosterPanel();
   if(level.dmgNum){ const d=level.dmgNum; dmgNumCfg.on = d.on!==false; if(d.size) dmgNumCfg.size=+d.size; if(d.hit) dmgNumCfg.hitColor=d.hit; if(d.kill) dmgNumCfg.killColor=d.kill; }
   if(level.pstart){ playerSpawn.x=level.pstart.x||0; playerSpawn.z=level.pstart.z||0; playerSpawn.y=level.pstart.y||0; playerSpawn.yaw=level.pstart.yaw||0; refreshPlayerSpawnMarker(); }
-  if(level.weapons){ for(const k in WEAPONS){ const wd=level.weapons[k]; if(wd){ WEAPONS[k].model=wd.model||''; WEAPONS[k].view=wd.view||null; WEAPONS[k].dmg = (wd.dmg!=null) ? +wd.dmg : GUN_BASE_DMG[k]; if(wd.clips) WEAPONS[k].clips=Object.assign({idle:'',shoot:'',reload:''}, wd.clips); } } }
+  if(level.weapons){ for(const k in WEAPONS){ const wd=level.weapons[k]; if(wd){ WEAPONS[k].model=wd.model||''; WEAPONS[k].view=wd.view||null; WEAPONS[k].dmg = (wd.dmg!=null) ? +wd.dmg : GUN_BASE_DMG[k]; if(wd.clips) WEAPONS[k].clips=Object.assign(_wepClipBlank(k), wd.clips); } } }
   if(level.grenade){ const G=level.grenade; if(G.model!=null) GRENADE.model=G.model||''; if(G.scale!=null) GRENADE.scale=G.scale; if(G.radius!=null) GRENADE.radius=G.radius; if(G.damage!=null) GRENADE.damage=G.damage; if(G.fuse!=null) GRENADE.fuse=G.fuse; if(G.throwForce!=null) GRENADE.throwForce=G.throwForce; loadGrenadeModel(); if(editorTargets.grenade.sync) editorTargets.grenade.sync(); }
   if(level.enemies || level.enemy){   // adopt the host's per-type enemy models so clients render the same hostiles
     applyEnemyModelData(level.enemies, level.enemy);
@@ -14379,7 +14415,7 @@ function interact(){
 }
 // Dedicated grab / drop, bound to G and middle-mouse (scroll-wheel push). E still grabs+uses as before
 // (and is what the touch Use button routes through), so this just adds the new bindings.
-function grabAction(){ if(heldProp) releaseHeld(); else tryGrabProp(); }
+function grabAction(){ if(heldProp) releaseHeld(); else tryGrabProp(); if(_isFistsWep(curWep) && typeof triggerFistAnim==='function') triggerFistAnim('grab'); }   // build 678: play the fists grab clip
 
 function openShop(chest){
   if(duelDead) return;   // no shopping while waiting to respawn
@@ -14780,7 +14816,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 677 · 2026-06-24';
+const BUILD_VERSION = 'build 678 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16040,7 +16076,10 @@ function meleeAttack(wep){
   const now = performance.now();
   if(now - _meleeT < (wep ? 0 : MELEE_CD)) return;   // a weapon is gated by its own fireRate; the bare-fist punch uses MELEE_CD
   _meleeT = now; if(typeof playOwnAnim==='function') playOwnAnim((wep && wep.dmg>=50)?'meleeHeavy':'meleeLight', 360);   // heavy swing for the crowbar, light otherwise
-  if(wep && wep.fists && typeof _punchFists==='function') _punchFists();   // build 672: lunge the first-person fist
+  if(wep && wep.fists){   // build 678: alternate the punch; play the mapped punchR/punchL clip if the model has one
+    if(typeof _punchFists==='function') _punchFists();   // flips _fistSide (procedural fallback nod)
+    if(typeof triggerFistAnim==='function') triggerFistAnim(_fistSide<0 ? 'punchL' : 'punchR');
+  }
   const RANGE = (wep && wep.reach) || MELEE_RANGE, DMG = (wep && wep.dmg) || MELEE_DMG;
   if(typeof tone==='function') tone({ freq:320, type:'sine', dur:0.07, vol:0.07, slideTo:150 });   // swing whoosh
   const fwd = new THREE.Vector3(); camera.getWorldDirection(fwd);
@@ -18001,7 +18040,9 @@ function loop(){
   gun.rotation.x = (reloading?0.5:0) + ADS_ROT.x*adsBlend;
   gun.rotation.y = ADS_ROT.y*adsBlend;
   gun.rotation.z = ADS_ROT.z*adsBlend;
-  const _mp = 1 - Math.min(1, (performance.now()-_meleeT)/250);   // quick out-and-back punch thrust
+  // build 678: the built-in "punch thrust" shoves the whole viewmodel forward on a melee swing. Fists rely on their
+  // own (imported or procedural) punch animation instead, so skip it for a fists weapon.
+  const _mp = _isFistsWep(curWep) ? 0 : (1 - Math.min(1, (performance.now()-_meleeT)/250));   // quick out-and-back punch thrust
   if(_mp>0){ const j=Math.sin(_mp*Math.PI); gun.position.z -= j*0.55; gun.position.y -= j*0.12; gun.rotation.x -= j*0.25; }
   recoil *= 0.85;
   muzzle.intensity *= 0.6; flashMat.opacity *= 0.5;
@@ -19732,7 +19773,7 @@ function restoreLevel(level){
   if(level.gun){ if(level.gun.url && level.gun.url!==gunModelUrl) swapGunModel(level.gun.url); Object.assign(editorTargets.gun.state, level.gun.state||{}); editorTargets.gun.apply(); }
   // per-weapon models + framing
   if(level.weapons && typeof level.weapons==='object'){
-    for(const k in WEAPONS){ const wd=level.weapons[k]; if(wd){ WEAPONS[k].model=wd.model||''; WEAPONS[k].view=wd.view||null; WEAPONS[k].dmg = (wd.dmg!=null) ? +wd.dmg : GUN_BASE_DMG[k]; WEAPONS[k].clips = wd.clips ? Object.assign({idle:'',shoot:'',reload:''}, wd.clips) : undefined; } else { WEAPONS[k].model=''; WEAPONS[k].view=null; WEAPONS[k].dmg=GUN_BASE_DMG[k]; WEAPONS[k].clips=undefined; } }
+    for(const k in WEAPONS){ const wd=level.weapons[k]; if(wd){ WEAPONS[k].model=wd.model||''; WEAPONS[k].view=wd.view||null; WEAPONS[k].dmg = (wd.dmg!=null) ? +wd.dmg : GUN_BASE_DMG[k]; WEAPONS[k].clips = wd.clips ? Object.assign(_wepClipBlank(k), wd.clips) : undefined; } else { WEAPONS[k].model=''; WEAPONS[k].view=null; WEAPONS[k].dmg=GUN_BASE_DMG[k]; WEAPONS[k].clips=undefined; } }
     // drop cached models so they reload with their (possibly new) urls
     for(const k in gunModelByWep){ if(gunModelByWep[k]){ gun.remove(gunModelByWep[k]); gunModelByWep[k]=null; } _gunLoading[k]=false; }
     if(editorTargets.gun.syncFromWeapon) editorTargets.gun.syncFromWeapon();
@@ -21955,19 +21996,24 @@ function renderEditorFields(){
         wrow.appendChild(b);
       }
       urlHost.appendChild(wrow);
-      if(editorActive==='gun'){   // animation mapping for this weapon's model (idle loops; shoot/reload fire on gameplay) -- 'gun' is an editorActive TARGET, not an editorMode
-        const ch=document.createElement('div'); ch.className='hint'; ch.style.margin='4px 0 3px'; ch.innerHTML='<b>Animations</b> — if the model has clips: idle loops, shoot plays per shot, reload plays on R';
+      if(editorActive==='gun'){   // animation mapping for this weapon's model -- 'gun' is an editorActive TARGET, not an editorMode
+        const isFists = _isFistsWep(curWep);   // build 678: fists animate on idle / punch R / punch L / grab
+        const STATES = isFists ? _FIST_STATES : ['idle','shoot','reload'];
+        const ch=document.createElement('div'); ch.className='hint'; ch.style.margin='4px 0 3px';
+        ch.innerHTML = isFists
+          ? '<b>Animations</b> — fists: idle loops, <b>punch R / L</b> alternate as you swing, <b>grab</b> plays when you grab (G). Map an imported hands model’s clips here.'
+          : '<b>Animations</b> — if the model has clips: idle loops, shoot plays per shot, reload plays on R';
         urlHost.appendChild(ch);
         const names=(_gunClipNames[curWep]||[]).slice();
         const wcl=WEAPONS[curWep].clips||{};
-        for(const v of [wcl.idle,wcl.shoot,wcl.reload]){ if(v && names.indexOf(v)<0) names.push(v); }
-        for(const st of ['idle','shoot','reload']){
+        for(const st of STATES){ const v=wcl[st]; if(v && names.indexOf(v)<0) names.push(v); }
+        for(const st of STATES){
           const r=document.createElement('label'); r.style.cssText='display:flex;align-items:center;gap:7px;font-size:11px;color:#9fe6cf;margin:2px 0;';
-          const sp=document.createElement('span'); sp.textContent=st; sp.style.minWidth='46px';
+          const sp=document.createElement('span'); sp.textContent=isFists?(_FIST_LABEL[st]||st):st; sp.style.minWidth='52px';
           const sel=document.createElement('select'); sel.style.cssText='flex:1;font-size:11px;';
-          const auto=document.createElement('option'); auto.value=''; auto.textContent=names.length?('Auto — '+st+' by name'):'Auto — load a model first'; if(!wcl[st]) auto.selected=true; sel.appendChild(auto);
+          const auto=document.createElement('option'); auto.value=''; auto.textContent=names.length?('Auto — '+(isFists?(_FIST_LABEL[st]||st):st)+' by name'):'Auto — load a model first'; if(!wcl[st]) auto.selected=true; sel.appendChild(auto);
           for(const nm of names){ const o=document.createElement('option'); o.value=nm; o.textContent=nm||'(unnamed)'; if(wcl[st]===nm) o.selected=true; sel.appendChild(o); }
-          sel.onchange=()=>{ pushUndoSnapshot(); if(!WEAPONS[curWep].clips) WEAPONS[curWep].clips={idle:'',shoot:'',reload:''}; WEAPONS[curWep].clips[st]=sel.value; _rebuildGunStates(curWep); };
+          sel.onchange=()=>{ pushUndoSnapshot(); if(!WEAPONS[curWep].clips) WEAPONS[curWep].clips=_wepClipBlank(curWep); WEAPONS[curWep].clips[st]=sel.value; _rebuildGunStates(curWep); };
           r.appendChild(sp); r.appendChild(sel); urlHost.appendChild(r);
         }
       }

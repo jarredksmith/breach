@@ -17,7 +17,7 @@ assert(/acts\.idle\.stop\(\)/.test(tg) && /a\.reset\(\)\.play\(\)/.test(tg), 'on
 
 // loader prefers states, records names, falls back
 assert(/_gunClipNames\[key\] = \(gltf\.animations\|\|\[\]\)\.map/.test(src), 'discovered clip names recorded for the editor');
-assert(/if\(!playGunStates\(model, gltf, WEAPONS\[key\]\.clips\)\) playModelAnimations\(model, gltf\)/.test(src), 'state clips preferred, loop-all fallback');
+assert(/if\(!_playWepStates\(key, model, gltf\)\) playModelAnimations\(model, gltf\)/.test(src), 'state clips preferred (gun or fists), loop-all fallback');
 
 // gameplay triggers
 assert(/triggerGunAnim\('shoot'\);   \/\/ fire the model's shoot clip if it has one/.test(src), 'shoot() triggers the clip');
@@ -26,7 +26,7 @@ assert(/reloading = true; SFX\.reload\(\); triggerGunAnim\('reload'\)/.test(src)
 
 // persistence: serialized + restored on all three weapons paths
 assert(/if\(w\.model \|\| w\.view \|\| w\.clips \|\| dmgChg\) acc\[k\]=\{ model:w\.model\|\|'', view:w\.view\|\|null, clips:w\.clips\|\|null, dmg: dmgChg \? w\.dmg : undefined \}/.test(src), 'clips (and changed damage) serialized');
-assert((src.match(/Object\.assign\(\{idle:'',shoot:'',reload:''\}, wd\.clips\)/g)||[]).length>=3, 'clips restored at boot + net-load + restoreLevel');
+assert((src.match(/Object\.assign\(_wepClipBlank\(k\), wd\.clips\)/g)||[]).length>=3, 'clips restored at boot + net-load + restoreLevel (fists-aware defaults)');
 
 // editor picker
 assert(/if\(editorActive==='gun'\)\{   \/\/ animation mapping/.test(src), 'gun tab has the clip mapping UI');

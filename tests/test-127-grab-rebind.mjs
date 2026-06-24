@@ -3,7 +3,7 @@
 import { gameSource, extractFunction, done, assert } from './harness.mjs';
 const src = gameSource();
 
-assert(/function grabAction\(\)\{ if\(heldProp\) releaseHeld\(\); else tryGrabProp\(\); \}/.test(src), 'dedicated grabAction (grab/drop)');
+assert(/function grabAction\(\)\{ if\(heldProp\) releaseHeld\(\); else tryGrabProp\(\);/.test(src), 'dedicated grabAction (grab/drop)');
 assert(/if\(e\.code==='KeyG'\) grabAction\(\);/.test(src), 'G grabs / drops');
 assert(/if\(e\.code==='KeyF'\) throwGrenade\(\);/.test(src), 'grenade relocated to F');
 assert(!/if\(e\.code==='KeyG'\) throwGrenade\(\)/.test(src), 'G no longer throws a grenade');
