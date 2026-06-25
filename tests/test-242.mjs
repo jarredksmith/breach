@@ -52,6 +52,6 @@ assert(src.split('if(Array.isArray(p.sg)) obj.userData.signals=p.sg.map(s=>{ con
 
 // --- editor + level check ---
 assert(/edFold\(animHost, 'signals', 'Signals', false, 'Tag this prop/.test(src), 'Signals fold in the inspector (title + subtitle, build 362)');
-assert(/\[\['destroyed','On destroyed'\],\['interacted','On E'\],\['contact','On object placed'\]\]/.test(src) && /\[\['toggle','Toggle'\],\['open','Open'\],\['close','Close'\],\['anim','Play anim'\],\['unlock','Unlock'\],\['win','Win level'\],\['cutscene','Play cutscene'\],\['objective','Set objective'\]\]/.test(src), 'when/do dropdowns');
+assert(/\[\['destroyed','On destroyed'\],\['interacted','On E'\],\['contact','On object placed'\]\]/.test(src) && /\[\['toggle','Toggle'\],\['open','Open'\],\['close','Close'\],\['anim','Play anim'\],\['unlock','Unlock'\],\['win','Win level'\],\['cutscene','Play cutscene'\],\['objective','Set objective'\],\['checkpoint','Set checkpoint'\]\]/.test(src), 'when/do dropdowns');
 assert(/A signal targets tag '"\+s\.target\+"', but no prop carries that tag\./.test(extractFunction('levelIssues')), 'Level check flags dangling signal targets');
 done();

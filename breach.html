@@ -7117,6 +7117,7 @@ function _applySignalAction(s){
         try{ startCinematic({ shots: cineShotsOf(cc), audio: cc.audio }, false); if(typeof broadcastCine==='function') broadcastCine(s.cs); }catch(e){}
       } return; }
     if(s.do==='objective'){ if(typeof setGoal==='function') setGoal(s.text||''); return; }   // build 692: update the on-screen objective; no target needed
+    if(s.do==='checkpoint'){ if(typeof setCheckpoint==='function') setCheckpoint(); return; }   // build 693: drop a respawn checkpoint at the player; no target needed
     if(!s.target) return;
     for(let i=0;i<propModels.length;i++){
       const t = propModels[i]; if(!t || t.userData.tag !== s.target) continue;
@@ -8364,6 +8365,7 @@ let gameCfg = {
   flashlight: !!(savedLevel && savedLevel.game && savedLevel.game.flashlight),  // a toggleable held flashlight (press L)
   flashCfg: _sanitizeFlash(savedLevel && savedLevel.game && savedLevel.game.flash),   // build 677: tunable beam (brightness/cone/softness/range/colour)
   goalText: (savedLevel && savedLevel.game && typeof savedLevel.game.goalText==='string') ? savedLevel.game.goalText.slice(0,160) : '',   // build 692: a goal/objective line shown to the player (and updatable via signals)
+  respawnOnDeath: !!(savedLevel && savedLevel.game && savedLevel.game.respawnOnDeath),   // build 693: solo death -> respawn at last checkpoint (adventure/puzzle) instead of game over
   // Confine multiplayer/bot random spawns to a region (e.g. inside an arena prop) instead of the whole map.
   // shape 'circle' (x,z,r) or 'poly' (a clicked outline of {x,z} points) — poly handles odd-shaped arenas.
   spawnRegion: {
@@ -11663,7 +11665,25 @@ function _applyCrushFromProp(obj, speed, dt){
 function applyEnemyDamageToSelf(dmg, sx, sz){
   if(buffs.shield>0){ const a=Math.min(buffs.shield,dmg); buffs.shield-=a; dmg-=a; }
   player.hp -= dmg; flashDamage(); SFX.hurt(); addShake(Math.min(0.5, dmg/55)); if(sx!=null) hurtDir(sx,sz); updateHUD();
-  if(player.hp<=0) endGame();
+  if(player.hp<=0) playerDied();
+}
+// build 693: checkpoints. A signal can drop a checkpoint at the player's spot; with "Respawn at checkpoint" on, a
+// solo death sends them back to the last checkpoint (or the level start) with full health instead of game over —
+// the progress system adventure/puzzle levels need. Wave shooters keep their game-over by leaving the toggle off.
+let _checkpoint = null;
+function setCheckpoint(){ _checkpoint = { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw }; if(typeof toast==='function') toast('Checkpoint reached'); if(typeof SFX!=='undefined' && SFX.power) SFX.power(); }
+function respawnAtCheckpoint(){
+  player.hp = player.maxHp;
+  if(typeof releaseHeld==='function') releaseHeld();
+  if(_checkpoint){ player.pos.set(_checkpoint.x, _checkpoint.y, _checkpoint.z); if(_checkpoint.yaw!=null) player.yaw=_checkpoint.yaw; }
+  else { const ty=(typeof terrainHeightAt==='function')?terrainHeightAt(playerSpawn.x,playerSpawn.z):0; player.pos.set(playerSpawn.x, ty+(playerSpawn.y||0)+EYE, playerSpawn.z); player.yaw=playerSpawn.yaw; }
+  player.vel.set(0,0,0); if(player.extVel) player.extVel.set(0,0,0); player.onGround=false;
+  flashDamage(); updateHUD();
+  if(typeof toast==='function') toast(_checkpoint ? 'Respawned at checkpoint' : 'Respawned');
+}
+function playerDied(){
+  if(gameCfg.respawnOnDeath && (typeof pvpMode!=='function' || !pvpMode()) && NET.mode==='off'){ respawnAtCheckpoint(); return; }
+  endGame();
 }
 
 // ---- PvP deathmatch (1v1 duel + free-for-all share one engine) ----
@@ -12282,7 +12302,7 @@ function loadLevelFromNet(level){
   if(level.audio && NET.mode!=='client'){ try{ audioSettings.musicUrl=(typeof level.audio.musicUrl==='string')?level.audio.musicUrl:''; audioSettings.sounds=_sanitizeSounds(level.audio.sounds); if(typeof saveAudioSettings==='function') saveAudioSettings(); if(typeof preloadCustomSounds==='function') preloadCustomSounds(); if(_musicOn){ stopMusic(); startMusic(); } }catch(e){ console.warn('level audio apply failed', e); } }
   _applyCine(level.cine);
   // per-player characters: the client keeps its own avatar; the host's character arrives via the welcome 'char' field
-  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg(); gameCfg.goalText = (typeof level.game.goalText==="string") ? level.game.goalText.slice(0,160) : "";
+  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg(); gameCfg.goalText = (typeof level.game.goalText==="string") ? level.game.goalText.slice(0,160) : ""; gameCfg.respawnOnDeath = !!level.game.respawnOnDeath;
       if(level.game.spawnRegion){ const _sr=level.game.spawnRegion; gameCfg.spawnRegion = { on:!!_sr.on, shape:_sr.shape||'circle', x:+_sr.x||0, z:+_sr.z||0, r:(_sr.r!=null?+_sr.r:30), poly:Array.isArray(_sr.poly)?_sr.poly.map(p=>({x:+p.x||0,z:+p.z||0})):[] }; } else { gameCfg.spawnRegion = { on:false, shape:'circle', x:0, z:0, r:30, poly:[] }; } }
   extractSpot = level.extract ? { x:level.extract.x||0, z:level.extract.z||0 } : null; if(level.extractFx){ extractFxCfg.color=level.extractFx.color!=null?level.extractFx.color:extractFxCfg.color; extractFxCfg.opacity=level.extractFx.opacity!=null?level.extractFx.opacity:extractFxCfg.opacity; extractFxCfg.height=level.extractFx.height!=null?level.extractFx.height:extractFxCfg.height; extractFxCfg.pillar=level.extractFx.pillar!=null?!!level.extractFx.pillar:extractFxCfg.pillar; if(typeof applyExtractFx==='function') applyExtractFx(); } if(typeof refreshExtractMarker==='function') refreshExtractMarker();   // restore the per-level extraction spot (campaign / co-op load path)
   audioZones = Array.isArray(level.audioZones) ? level.audioZones.map(z=>({ x:+z.x||0, z:+z.z||0, r:+z.r||14, url:z.url||'', vol:(z.vol!=null?+z.vol:0.8), loop:z.loop!==false })) : [];
@@ -14888,7 +14908,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 692 · 2026-06-24';
+const BUILD_VERSION = 'build 693 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19394,7 +19414,7 @@ function serializeLevel(){
     roster: charRoster.map(c=>({ name:c.name, url:c.url, scale:c.scale, face:c.face, rx:c.rx, rz:c.rz, xoff:c.xoff, yoff:c.yoff, zoff:c.zoff, thumb:c.thumb||'', clips:Object.assign({},c.clips||{}), clipSpeed:Object.assign({},c.clipSpeed||{}), clipHold:Object.assign({},c.clipHold||{}), clipInPlace:Object.assign({},c.clipInPlace||{}), grip:_sanitizeGripMap(c.grip), view:_sanitizeView(c.view) })),
     pickupModels: Object.keys(pickupModels).reduce((a,k)=>{ const m=pickupModels[k]; if(m&&m.url){ a[k]={ url:m.url, scale:m.scale||1 }; } return a; }, {}),
     keyNames: Object.keys(keyNames).reduce((a,k)=>{ const n=(keyNames[k]||'').trim(); if(n) a[k]=n; return a; }, {}),
-    game:    { mode: gameCfg.mode, winWaves: gameCfg.winWaves, upgrades: gameCfg.upgrades !== false, objective: gameCfg.objective, surviveSecs: gameCfg.surviveSecs, extractHold: gameCfg.extractHold, extractRadius: gameCfg.extractRadius, bossWave: gameCfg.bossWave, noRespawn: !!gameCfg.noRespawn, unarmed: !!gameCfg.unarmed, allowPickup: gameCfg.allowPickup!==false, flashlight: !!gameCfg.flashlight, flash: { intensity:+gameCfg.flashCfg.intensity, angle:+gameCfg.flashCfg.angle, penumbra:+gameCfg.flashCfg.penumbra, distance:+gameCfg.flashCfg.distance, color:gameCfg.flashCfg.color }, goalText: (gameCfg.goalText||'').slice(0,160), spawnRegion: { on: !!gameCfg.spawnRegion.on, shape: gameCfg.spawnRegion.shape||'circle', x: +gameCfg.spawnRegion.x, z: +gameCfg.spawnRegion.z, r: +gameCfg.spawnRegion.r, poly: (gameCfg.spawnRegion.poly||[]).map(p=>({ x:+p.x, z:+p.z })) } , fallDamage: { on: !!gameCfg.fallDamage.on, player: gameCfg.fallDamage.player!==false, ai: gameCfg.fallDamage.ai!==false, minSpeed: +gameCfg.fallDamage.minSpeed, perUnit: +gameCfg.fallDamage.perUnit }, crushDamage: { on: !!gameCfg.crushDamage.on, player: gameCfg.crushDamage.player!==false, ai: gameCfg.crushDamage.ai!==false, minSpeed: +gameCfg.crushDamage.minSpeed, perUnit: +gameCfg.crushDamage.perUnit }, crosshair: { style: gameCfg.crosshair.style, size: +gameCfg.crosshair.size, thickness: +gameCfg.crosshair.thickness, gap: +gameCfg.crosshair.gap, dot: !!gameCfg.crosshair.dot, color: gameCfg.crosshair.color } },
+    game:    { mode: gameCfg.mode, winWaves: gameCfg.winWaves, upgrades: gameCfg.upgrades !== false, objective: gameCfg.objective, surviveSecs: gameCfg.surviveSecs, extractHold: gameCfg.extractHold, extractRadius: gameCfg.extractRadius, bossWave: gameCfg.bossWave, noRespawn: !!gameCfg.noRespawn, unarmed: !!gameCfg.unarmed, allowPickup: gameCfg.allowPickup!==false, flashlight: !!gameCfg.flashlight, flash: { intensity:+gameCfg.flashCfg.intensity, angle:+gameCfg.flashCfg.angle, penumbra:+gameCfg.flashCfg.penumbra, distance:+gameCfg.flashCfg.distance, color:gameCfg.flashCfg.color }, goalText: (gameCfg.goalText||'').slice(0,160), respawnOnDeath: !!gameCfg.respawnOnDeath, spawnRegion: { on: !!gameCfg.spawnRegion.on, shape: gameCfg.spawnRegion.shape||'circle', x: +gameCfg.spawnRegion.x, z: +gameCfg.spawnRegion.z, r: +gameCfg.spawnRegion.r, poly: (gameCfg.spawnRegion.poly||[]).map(p=>({ x:+p.x, z:+p.z })) } , fallDamage: { on: !!gameCfg.fallDamage.on, player: gameCfg.fallDamage.player!==false, ai: gameCfg.fallDamage.ai!==false, minSpeed: +gameCfg.fallDamage.minSpeed, perUnit: +gameCfg.fallDamage.perUnit }, crushDamage: { on: !!gameCfg.crushDamage.on, player: gameCfg.crushDamage.player!==false, ai: gameCfg.crushDamage.ai!==false, minSpeed: +gameCfg.crushDamage.minSpeed, perUnit: +gameCfg.crushDamage.perUnit }, crosshair: { style: gameCfg.crosshair.style, size: +gameCfg.crosshair.size, thickness: +gameCfg.crosshair.thickness, gap: +gameCfg.crosshair.gap, dot: !!gameCfg.crosshair.dot, color: gameCfg.crosshair.color } },
     dmgNum:  { on: dmgNumCfg.on !== false, size: dmgNumCfg.size, hit: dmgNumCfg.hitColor, kill: dmgNumCfg.killColor },
     pstart:  { x: playerSpawn.x, y: playerSpawn.y||0, z: playerSpawn.z, yaw: playerSpawn.yaw },
     extract: extractSpot ? { x: +extractSpot.x.toFixed(3), z: +extractSpot.z.toFixed(3) } : null,
@@ -19871,7 +19891,7 @@ function restoreLevel(level){
   // enemy spawns
   for(let i=spawnMarkers.length-1;i>=0;i--) removeSpawnMarker(i);
   if(Array.isArray(level.spawns)){ for(const sp of level.spawns) buildSpawnMarker(sp); } setSpawnMarkersVisible(editorOpen);
-  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg(); gameCfg.goalText = (typeof level.game.goalText==="string") ? level.game.goalText.slice(0,160) : "";
+  if(level.game){ gameCfg.mode = level.game.mode||'random'; gameCfg.winWaves = level.game.winWaves||0; gameCfg.upgrades = level.game.upgrades !== false; gameCfg.objective = level.game.objective||'eliminate'; gameCfg.surviveSecs = level.game.surviveSecs!=null ? level.game.surviveSecs : 120; gameCfg.extractHold = level.game.extractHold!=null ? level.game.extractHold : 5; gameCfg.extractRadius = level.game.extractRadius!=null ? level.game.extractRadius : 3.5; gameCfg.bossWave = level.game.bossWave!=null ? level.game.bossWave : 5; gameCfg.noRespawn = !!level.game.noRespawn; gameCfg.unarmed = !!level.game.unarmed; gameCfg.allowPickup = level.game.allowPickup!==false; gameCfg.flashlight = !!level.game.flashlight; gameCfg.flashCfg = _sanitizeFlash(level.game.flash); if(typeof applyFlashCfg==="function") applyFlashCfg(); gameCfg.goalText = (typeof level.game.goalText==="string") ? level.game.goalText.slice(0,160) : ""; gameCfg.respawnOnDeath = !!level.game.respawnOnDeath;
       if(level.game.spawnRegion){ const _sr=level.game.spawnRegion; gameCfg.spawnRegion = { on:!!_sr.on, shape:_sr.shape||'circle', x:+_sr.x||0, z:+_sr.z||0, r:(_sr.r!=null?+_sr.r:30), poly:Array.isArray(_sr.poly)?_sr.poly.map(p=>({x:+p.x||0,z:+p.z||0})):[] }; } else { gameCfg.spawnRegion = { on:false, shape:'circle', x:0, z:0, r:30, poly:[] }; } }
   if(level.dmgNum){ const d=level.dmgNum; dmgNumCfg.on = d.on!==false; if(d.size) dmgNumCfg.size=+d.size; if(d.hit) dmgNumCfg.hitColor=d.hit; if(d.kill) dmgNumCfg.killColor=d.kill; }
   if(level.pstart){ playerSpawn.x=level.pstart.x||0; playerSpawn.z=level.pstart.z||0; playerSpawn.y=level.pstart.y||0; playerSpawn.yaw=level.pstart.yaw||0; } else { playerSpawn.x=0; playerSpawn.z=0; playerSpawn.y=0; playerSpawn.yaw=0; }
@@ -20671,7 +20691,7 @@ function buildSignalsUI(sgBody, store, rerender){
   sigs.forEach((s,si)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;gap:4px;align-items:center;margin:0 0 3px;';
     const mkSel=(opts,val,on)=>{ const e=document.createElement('select'); e.style.cssText='font-size:11px;flex:1;'; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if(val===o[0]) op.selected=true; e.appendChild(op); }); e.onchange=()=>{ pushUndoSnapshot(); on(e.value); rerender(); }; return e; };
     r.appendChild(mkSel([['destroyed','On destroyed'],['interacted','On E'],['contact','On object placed']], s.when, v=>{ s.when=v; }));
-    r.appendChild(mkSel([['toggle','Toggle'],['open','Open'],['close','Close'],['anim','Play anim'],['unlock','Unlock'],['win','Win level'],['cutscene','Play cutscene'],['objective','Set objective']], s.do, v=>{ s.do=v; }));
+    r.appendChild(mkSel([['toggle','Toggle'],['open','Open'],['close','Close'],['anim','Play anim'],['unlock','Unlock'],['win','Win level'],['cutscene','Play cutscene'],['objective','Set objective'],['checkpoint','Set checkpoint']], s.do, v=>{ s.do=v; }));
     const ti=document.createElement('input'); ti.type='text'; ti.placeholder='target tag'; ti.value=s.target||'';
     ti.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
     ti.onchange=()=>{ pushUndoSnapshot(); s.target=ti.value.trim(); rerender(); };
@@ -21194,6 +21214,12 @@ function renderEditorFields(){
     hint(gHost, '<b>Objective text</b> — tells the player what to do', '10px 0 3px');
     { const gi=document.createElement('input'); gi.type='text'; gi.maxLength=160; gi.placeholder='e.g. Find the three idols and place them on the altar'; gi.value=gameCfg.goalText||''; gi.style.cssText='width:100%;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:4px 7px;font-size:12px;'; gi.onchange=()=>{ pushUndoSnapshot(); gameCfg.goalText=gi.value.slice(0,160); _levelDirty=true; }; gHost.appendChild(gi);
       hint(gHost, '', '2px 0 0').textContent='Shown as a banner when the run starts; the player presses J to re-read it. A signal’s “Set objective” action can change it as the puzzle progresses.'; }
+    // ---- Checkpoints (build 693): solo death respawns at the last checkpoint instead of ending the run ----
+    { const lab=document.createElement('label'); lab.style.cssText='display:flex;align-items:center;gap:7px;color:#9fe6cf;font-size:12px;margin:9px 0 2px;cursor:pointer;';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!gameCfg.respawnOnDeath; cb.style.cssText='width:15px;height:15px;accent-color:var(--accent);cursor:pointer;';
+      cb.onchange=()=>{ pushUndoSnapshot(); gameCfg.respawnOnDeath=cb.checked; }; const sp=document.createElement('span'); sp.innerHTML='<b>Respawn at checkpoint</b> on death (solo)';
+      lab.appendChild(cb); lab.appendChild(sp); gHost.appendChild(lab);
+      hint(gHost, '', '2px 0 6px').textContent='On: dying in solo sends you back to the last checkpoint (or the start) with full health — no game over. Drop checkpoints with a signal’s “Set checkpoint” action (e.g. a contact plate or an E-activated flag). Off: dying ends the run (wave shooters).'; }
     // ---- Fall damage ----
     if(!gameCfg.fallDamage) gameCfg.fallDamage = { on:false, player:true, ai:true, minSpeed:24, perUnit:1.4 };
     hint(gHost, '<b>Fall damage</b> — hurt anything that lands hard', '10px 0 4px');
@@ -23440,7 +23466,7 @@ function startGame(){
   // build 555: do NOT start the world music here — startGame runs while the loading screen is still up, so the
   // track used to begin the instant loading started, playing behind the loader. It now starts when the loader
   // finishes (reveal()), or immediately at the end of startGame when there's no loader/cover at all.
-  player.hp=100; player.maxHp=100; run = { ...RUN0 }; if(typeof closeUpgradePicker==='function') closeUpgradePicker(); player.pos.set(playerSpawn.x, terrainHeightAt(playerSpawn.x, playerSpawn.z)+(playerSpawn.y||0)+EYE, playerSpawn.z); player.vel.set(0,0,0);
+  player.hp=100; player.maxHp=100; run = { ...RUN0 }; _checkpoint=null; if(typeof closeUpgradePicker==='function') closeUpgradePicker(); player.pos.set(playerSpawn.x, terrainHeightAt(playerSpawn.x, playerSpawn.z)+(playerSpawn.y||0)+EYE, playerSpawn.z); player.vel.set(0,0,0);
   player.yaw=playerSpawn.yaw; player.pitch=0; player.onGround=(playerSpawn.y||0)<=0;
   // reset weapons — build 672: an "unarmed" level starts you on fists, no guns
   if(gameCfg.unarmed){ owned = ['hands']; curWep='hands'; } else { owned = ['rifle']; curWep='rifle'; }
