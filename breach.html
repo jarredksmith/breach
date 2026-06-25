@@ -7555,7 +7555,7 @@ function texResolvePBR(id, hi, cb, errcb){   // -> { map, normal, rough } direct
     .catch(errcb);
 }
 function renderTexSearch(host, onPick){
-  onPick = onPick || ((maps)=>{ const tg=_matTargets(); if(!tg.length) return false; pushUndoSnapshot(); for(const o of tg) applyPropTexturePBR(o, maps); const ti=document.getElementById('edTexInput'); if(ti) ti.value=maps.map||''; });
+  onPick = onPick || ((maps)=>{ const tg=_matTargets(); if(!tg.length) return false; pushUndoSnapshot(); for(const o of tg) applyPropTexturePBR(o, maps); const ti=edDoc().getElementById('edTexInput'); if(ti) ti.value=maps.map||''; });
   host.innerHTML='';
   const head=document.createElement('div'); head.className='hint'; head.style.margin='6px 0 4px';
   head.innerHTML='<b>Search textures</b> \u2014 Poly Haven (CC0), tap one to apply it to this primitive.';
@@ -9606,7 +9606,7 @@ function refreshPlayerClipOptions(){
   if(!playerModelCfg.clips) playerModelCfg.clips = { idle:'', walk:'', run:'', attack:'' };
   for(const e of Object.values(playerModelCfg.clips)){ if(e && names.indexOf(e)<0) names.push(e); }
   for(const _slot of ANIM_SLOTS){ const st = _slot.k;
-    const sel = document.getElementById('edPlayerClip_'+st); if(!sel) continue;
+    const sel = edDoc().getElementById('edPlayerClip_'+st); if(!sel) continue;
     sel.innerHTML='';
     const auto=document.createElement('option'); auto.value=''; auto.textContent = names.length ? ('Auto — '+st+' by name') : 'Auto — set a model first'; if(!playerModelCfg.clips[st]) auto.selected=true; sel.appendChild(auto);
     for(const nm of names){ const o=document.createElement('option'); o.value=nm; o.textContent=nm||'(unnamed)'; if(playerModelCfg.clips[st]===nm) o.selected=true; sel.appendChild(o); }
@@ -9622,7 +9622,7 @@ function refreshEnemyClipOptions(){
   const mc = enemyModelCfg(editorEnemyType), names = enemyClipOptionList(editorEnemyType);
   if(!mc.clips) mc.clips = { idle:'', walk:'', run:'', attack:'' };
   for(const _slot of ANIM_SLOTS){ const st = _slot.k;
-    const sel = document.getElementById('edEnemyClip_'+st); if(!sel) continue;
+    const sel = edDoc().getElementById('edEnemyClip_'+st); if(!sel) continue;
     sel.innerHTML='';
     const auto=document.createElement('option'); auto.value=''; auto.textContent = names.length ? ('Auto — '+st+' by name') : 'Auto — preview to list clips'; if(!mc.clips[st]) auto.selected=true; sel.appendChild(auto);
     for(const nm of names){ const o=document.createElement('option'); o.value=nm; o.textContent=nm||'(unnamed)'; if(mc.clips[st]===nm) o.selected=true; sel.appendChild(o); }
@@ -14857,7 +14857,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 685 · 2026-06-24';
+const BUILD_VERSION = 'build 686 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18903,7 +18903,7 @@ function revealZoneTool(type){
   if(typeof renderZonePicker==='function') renderZonePicker();
 }
 function renderZonePicker(){
-  const host=document.getElementById('edZonePicker'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edZonePicker'); if(!host) return; host.innerHTML='';
   const bar=document.createElement('div'); bar.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;';
   for(const [key,icon,label] of ZONE_TYPES){
     const on=activeZoneType===key; const b=document.createElement('button'); b.textContent=icon+' '+label;
@@ -18924,7 +18924,7 @@ function applyWepFxVisibility(){
   for(const k in WEPFX_HOST){ const el=document.getElementById(WEPFX_HOST[k]); if(el) el.style.display = (k===activeWepFx)?'':'none'; }
 }
 function renderWepFxPicker(){
-  const host=document.getElementById('edWepFxPicker'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edWepFxPicker'); if(!host) return; host.innerHTML='';
   const bar=document.createElement('div'); bar.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;';
   for(const [key,icon,label] of WEPFX_TYPES){
     const on=activeWepFx===key; const b=document.createElement('button'); b.textContent=icon+' '+label;
@@ -18987,6 +18987,10 @@ function setEditorMode(mode, fromSelection){
 // Clicking an object in the scene sets editorActive; jump to the mode that owns that target so its panels show.
 function syncModeToActive(){ const owner = TARGET_MODE[editorActive]; if(owner && owner!==editorMode) setEditorMode(owner, true); }
 let editorEl = null;
+// build 686: when the editor is popped into its own window the panel DOM is MOVED into that window's document,
+// so main-document getElementById can't find the panel's sub-hosts (build menu, HUD, FX pickers, etc.) and those
+// tabs render blank. Resolve element lookups against the editor's CURRENT document instead.
+function edDoc(){ return (editorEl && editorEl.ownerDocument) || document; }
 
 // Default animation behavior applied to newly added animated props (editor toggle controls it).
 let newPropAnimMode = 'loop';   // 'loop' = auto-play looping; 'trigger' = play only on E
@@ -19466,7 +19470,7 @@ function renderCharRosterPanel(){
   });
 }
 function renderTracerFxPanel(){
-  const host=document.getElementById('edTracerFx'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edTracerFx'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
   const row=(label,node)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;'; const s=document.createElement('span'); s.textContent=label; s.style.minWidth='64px'; r.appendChild(s); r.appendChild(node); wrap.appendChild(r); };
   const on=document.createElement('input'); on.type='checkbox'; on.checked=!!tracerCfg.on; on.onchange=()=>{ tracerCfg.on=on.checked; }; row('Enabled', on);
@@ -19487,7 +19491,7 @@ function renderTracerFxPanel(){
 // with its own colour / texture / scale / explosive / label-icon. Saved with the level; deployed props (and
 // their material) already sync to every player via the prop reconciler, so a custom build kit is shared online.
 function renderBuildMenuPanel(){
-  const host=document.getElementById('edBuildMenu'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edBuildMenu'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
   const touch=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); _levelDirty=true; };
   const lbl=(t)=>{ const s=document.createElement('span'); s.textContent=t; s.style.cssText='flex:1 1 auto;font-size:11px;color:#cfeee2;'; return s; };
@@ -19553,7 +19557,7 @@ function renderBuildMenuPanel(){
   host.appendChild(wrap);
 }
 function renderHudPanel(){
-  const host=document.getElementById('edHud'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edHud'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
   const commit=()=>{ if(typeof applyHudCfg==='function') applyHudCfg(); _levelDirty=true; };   // each control already pushed an undo snapshot
   const grp=(title)=>{ const h=document.createElement('div'); h.className='edSecSub'; h.style.cssText='margin:8px 0 4px;color:#7fd4c4;letter-spacing:.06em;text-transform:uppercase;font-size:10px;'; h.textContent=title; wrap.appendChild(h); };
@@ -19625,7 +19629,7 @@ function _wireHudDrag(){
   }
 }
 function renderBoltFxPanel(){
-  const host=document.getElementById('edBoltFx'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edBoltFx'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
   const row=(label,node)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;'; const s=document.createElement('span'); s.textContent=label; s.style.minWidth='64px'; r.appendChild(s); r.appendChild(node); wrap.appendChild(r); };
   const intro=document.createElement('div'); intro.className='hint'; intro.style.margin='0 0 6px'; intro.textContent='The look of ranged enemies’ bolts: tip, streak, trail, muzzle flash + impact. Cosmetic only — doesn’t change damage or aim.'; wrap.appendChild(intro);
@@ -19642,7 +19646,7 @@ function renderBoltFxPanel(){
   host.appendChild(wrap);
 }
 function renderImpactFxPanel(){
-  const host=document.getElementById('edImpactFx'); if(!host) return; host.innerHTML='';
+  const host=edDoc().getElementById('edImpactFx'); if(!host) return; host.innerHTML='';
   const wrap=document.createElement('div');
   const row=(label,node)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px;'; const s=document.createElement('span'); s.textContent=label; s.style.minWidth='64px'; r.appendChild(s); r.appendChild(node); wrap.appendChild(r); };
   const ci=document.createElement('input'); ci.type='color'; ci.value='#'+(fxCfg.color>>>0).toString(16).padStart(6,'0').slice(-6); ci.oninput=()=>{ fxCfg.color=parseInt(ci.value.slice(1),16); }; row('Color', ci);
