@@ -10,7 +10,7 @@ assert(/const HUD_TOGGLES = \['minimap','score','wave','ammo','health','crosshai
 
 // --- the CSS consumes the per-element transform/opacity/tint/font vars ---
 assert(/#prompt \{[^}]*transform:translateX\(-50%\) translate\(var\(--el-prompt-dx,0px\),var\(--el-prompt-dy,0px\)\) scale\(var\(--el-prompt-s,1\)\)/.test(html), 'prompt position/size from its vars');
-assert(/#prompt \{[^}]*opacity:var\(--el-prompt-op,1\)[^}]*color:var\(--el-tint,#ffd166\)/.test(html), 'prompt opacity + tint vars');
+assert(/#prompt \{[^}]*opacity:var\(--el-prompt-op,1\)[^}]*color:var\(--el-tint, var\(--accent,#ffd166\)\)/.test(html), 'prompt opacity + tint vars');
 assert(/#grabHint \{[^}]*translate\(var\(--el-grab-dx,0px\),var\(--el-grab-dy,0px\)\) scale\(var\(--el-grab-s,1\)\)[^}]*opacity:var\(--el-grab-op,1\)/.test(html), 'grab hint position/size/opacity vars');
 assert(/body\.hud-hide-prompt #prompt, body\.hud-hide-grab #grabHint \{ display: none !important; \}/.test(html), 'hide rules for both');
 
@@ -24,4 +24,11 @@ const ae = extractFunction('applyEditorMode');
 assert(/pe\.innerHTML='<b>E<\/b> Activate'; pe\.style\.display='block'/.test(ae), 'a sample prompt shows while theming the HUD');
 assert(/ge\.textContent='\[G \/ MMB\] Grab'; ge\.style\.display='block'/.test(ae), 'a sample grab hint shows while theming the HUD');
 
-done('build 696: interact prompt + grab hint are editable HUD elements');
+// --- build 697: the prompt + grab hint panel chrome now follows the HUD theme ---
+assert(/#prompt \{[^}]*background:linear-gradient\(135deg, rgba\(8,18,22,calc\(\.88\*var\(--hud-panel-op,1\)\)\)/.test(html), 'prompt background honours the panel-opacity theme');
+assert(/#prompt \{[^}]*border:1px solid rgba\(var\(--accent-rgb,255,209,102\),\.4\)/.test(html), 'prompt border tints with the accent');
+assert(/#grabHint \{[^}]*background:rgba\(6,12,15,calc\(\.55\*var\(--hud-panel-op,1\)\)\)[^}]*border:1px solid rgba\(var\(--accent-rgb,120,200,180\),\.3\)/.test(html), 'grab hint follows the panel-opacity + accent theme');
+assert(/body\.hud-shape-rounded #prompt, body\.hud-shape-square #prompt \{ clip-path: none !important; \}/.test(html), 'the prompt drops its angular clip for rounded/square shapes');
+assert(/body\.hud-noborder #hud \.panel, body\.hud-noborder #prompt, body\.hud-noborder #grabHint \{ border-color: transparent !important; \}/.test(html), 'no-border theme removes the prompt borders');
+
+done('build 696/697: interact prompt + grab hint are editable + themeable HUD elements');

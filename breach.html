@@ -105,10 +105,11 @@
   body.hud-shape-rounded #stats, body.hud-shape-square #stats,
   body.hud-shape-rounded #ammoPanel, body.hud-shape-square #ammoPanel,
   body.hud-shape-rounded #wavePanel, body.hud-shape-square #wavePanel,
-  body.hud-shape-rounded #score, body.hud-shape-square #score { clip-path: none !important; }
-  body.hud-shape-rounded #hud .panel { border-radius: 12px; }
-  body.hud-shape-square #hud .panel { border-radius: 0; }
-  body.hud-noborder #hud .panel { border-color: transparent !important; }
+  body.hud-shape-rounded #score, body.hud-shape-square #score,
+  body.hud-shape-rounded #prompt, body.hud-shape-square #prompt { clip-path: none !important; }
+  body.hud-shape-rounded #hud .panel, body.hud-shape-rounded #prompt, body.hud-shape-rounded #grabHint { border-radius: 12px; }
+  body.hud-shape-square #hud .panel, body.hud-shape-square #prompt, body.hud-shape-square #grabHint { border-radius: 0; }
+  body.hud-noborder #hud .panel, body.hud-noborder #prompt, body.hud-noborder #grabHint { border-color: transparent !important; }
   body.hud-hide-minimap #minimap, body.hud-hide-score #score, body.hud-hide-wave #wavePanel,
   body.hud-hide-ammo #ammoPanel, body.hud-hide-health #stats, body.hud-hide-crosshair #crosshair,
   body.hud-hide-killfeed #killFeed, body.hud-hide-prompt #prompt, body.hud-hide-grab #grabHint { display: none !important; }
@@ -215,7 +216,7 @@
   #cpHud .cpFill { height:100%; width:0; transition:width .15s; }
   #cpHud .cpFill.red { background:#ff4d5e; } #cpHud .cpFill.blue { background:#3a9bff; }
   #cpMid { font-size:13px; letter-spacing:1px; font-weight:700; color:#9fe6cf; min-width:112px; text-align:center; }
-  #grabHint { position:fixed; left:50%; top:58%; transform:translateX(-50%) translate(var(--el-grab-dx,0px),var(--el-grab-dy,0px)) scale(var(--el-grab-s,1)); transform-origin:center; opacity:var(--el-grab-op,1); z-index:8; display:none; color:var(--el-tint,#cfeee2); background:rgba(6,12,15,.5); border:1px solid rgba(120,200,180,.25); border-radius:6px; padding:3px 10px; font:600 12px var(--el-font, ui-monospace), monospace; letter-spacing:1px; pointer-events:none; }
+  #grabHint { position:fixed; left:50%; top:58%; transform:translateX(-50%) translate(var(--el-grab-dx,0px),var(--el-grab-dy,0px)) scale(var(--el-grab-s,1)); transform-origin:center; opacity:var(--el-grab-op,1); z-index:8; display:none; color:var(--el-tint,#cfeee2); background:rgba(6,12,15,calc(.55*var(--hud-panel-op,1))); border:1px solid rgba(var(--accent-rgb,120,200,180),.3); border-radius:6px; padding:3px 10px; font:600 12px var(--el-font, ui-monospace), monospace; letter-spacing:1px; pointer-events:none; }
   #radial { position:fixed; inset:0; z-index:30; display:none; background:rgba(4,8,10,.45); }
   #radialRing { position:absolute; inset:0; }
   #radial .radItem { position:absolute; transform:translate(-50%,-50%); width:74px; text-align:center; color:#cfeee2; transition:transform .08s; pointer-events:none; }
@@ -560,11 +561,12 @@
   /* Interaction prompt */
   #prompt { position:absolute; left:50%; bottom:120px;
     transform:translateX(-50%) translate(var(--el-prompt-dx,0px),var(--el-prompt-dy,0px)) scale(var(--el-prompt-s,1)); transform-origin:center bottom; opacity:var(--el-prompt-op,1);
-    text-align:center; color:var(--el-tint,#ffd166); font-size:15px; letter-spacing:1px; font-weight:600;
+    text-align:center; color:var(--el-tint, var(--accent,#ffd166)); font-size:15px; letter-spacing:1px; font-weight:600;
     font-family:var(--el-font, var(--hud-font, var(--ui-font))), ui-monospace, monospace;
-    background:rgba(8,18,22,.85); padding:10px 20px; border:1px solid rgba(255,209,102,.4);
+    background:linear-gradient(135deg, rgba(8,18,22,calc(.88*var(--hud-panel-op,1))), rgba(8,18,22,calc(.6*var(--hud-panel-op,1))));
+    backdrop-filter:blur(4px); padding:10px 20px; border:1px solid rgba(var(--accent-rgb,255,209,102),.4);
     clip-path:polygon(4% 0,96% 0,100% 100%,0 100%); display:none; }
-  #prompt b { color:#fff; background:rgba(255,209,102,.25); padding:1px 8px; border-radius:3px; }
+  #prompt b { color:#06120f; background:var(--el-tint, var(--accent,#ffd166)); padding:1px 8px; border-radius:3px; }
 
   /* Weapon swap toast */
   #weaponWheel { position:absolute; left:50%; top:70px; transform:translateX(-50%);
@@ -14966,7 +14968,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 696 · 2026-06-24';
+const BUILD_VERSION = 'build 697 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
