@@ -15,7 +15,7 @@ assert(/body\.setLinvel\(\{x:vx,y:vy,z:vz\}, true\)/.test(drv), 'held body is ve
 
 const grab = extractFunction('tryGrabProp');
 assert(/if\(!gameOn \|\| editorOpen \|\| shopOpen \|\| paused \|\| duelDead\) return false;/.test(grab), 'cannot grab in menus/dead');
-assert(/sendToPlayer\(0, \{t:'grab', nid:heldNidLocal\}\)/.test(grab), 'a client tells the host it grabbed');
+assert(/sendToPlayer\(0, \{t:'grab', nid:heldNidLocal\}\)/.test(extractFunction('grabSpecificProp')), 'a client tells the host it grabbed (shared grab helper, build 688)');
 
 const thr = extractFunction('throwHeld');
 assert(/b\.applyImpulse\(_impJ, true\)/.test(thr), 'host throws via a forward impulse');

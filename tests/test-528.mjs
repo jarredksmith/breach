@@ -26,7 +26,7 @@ assert(/else if\(!hit && s\._active\)\{ s\._active=false; \}/.test(tk), 're-arms
 assert(/tickContactSignals\(dt\)/.test(src), 'the tick runs in the main loop');
 
 // --- editor: contact option + sub-fields ---
-const panel = extractFunction('renderEditorFields');
+const panel = extractFunction('buildSignalsUI');   // build 688: the signals editor is a shared function now
 assert(/\['contact','On object placed'\]/.test(panel), 'the When dropdown offers "On object placed"');
 assert(/if\(s\.when==='contact'\)\{/.test(panel), 'contact sub-fields are shown');
 assert(/if\(v\) s\.from=v; else delete s\.from;/.test(panel), 'the object-tag filter is editable');

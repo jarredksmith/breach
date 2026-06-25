@@ -14582,8 +14582,30 @@ function useItem(id){
   if(t==='key'){ const k=it.useKey||'gold'; if(typeof playerKeys!=='undefined'){ playerKeys[k]=true; if(typeof renderKeyChips==='function') renderKeyChips(); } if(typeof toast==='function') toast('Acquired '+k+' key'); did=true; }
   else if(t==='heal'){ const amt=+it.useAmount||25; if(typeof player!=='undefined' && player){ player.hp=Math.min(player.maxHp, player.hp+amt); if(typeof updateHUD==='function') updateHUD(); } if(typeof SFX!=='undefined' && SFX.power) SFX.power(); if(typeof toast==='function') toast((it.name||id)+' \u2014 +'+amt+' health'); did=true; }
   else if(t==='ammo'){ if(typeof owned!=='undefined' && owned){ for(const key of owned){ const w=WEAPONS[key]; if(w) w.reserve=w.reserveMax; } if(typeof updateHUD==='function') updateHUD(); } if(typeof SFX!=='undefined' && SFX.pickup) SFX.pickup(); if(typeof toast==='function') toast((it.name||id)+' \u2014 ammo refilled'); did=true; }
+  else if(t==='place'){ did = spawnItemProp(id, it); if(did && invOpen && typeof closeInventory==='function') closeInventory(); }   // build 688: take it into your hands, then place it
   if(did && it.useConsume!==false) takeItem(id, 1);
   return did;
+}
+// build 688: "use" a placeable item -> its model spawns as a carried prop (with the item's tag + signals) that the
+// player then drops/throws to place. Session-only like a radial deploy; rides the prop reconciler in co-op.
+function spawnItemProp(id, it){
+  if(typeof gameOn==='undefined' || !gameOn || editorOpen || paused || duelDead) return false;
+  if(heldProp && typeof releaseHeld==='function') releaseHeld();   // free a hand first
+  const fwd=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+  const px=player.pos.x+fwd.x*2.0, pz=player.pos.z+fwd.z*2.0, py=player.pos.y-0.3;
+  const sc=(it.scale>0)?it.scale:1;
+  spawnProp(it.model||'box', [px, py, pz, 0,0,0, sc], (obj)=>{
+    obj.userData.runtime = true;          // session-only: never saved, cleared on redeploy
+    obj.userData.fromItem = id;
+    if(it.tag) obj.userData.tag = it.tag;
+    if(Array.isArray(it.signals) && it.signals.length) obj.userData.signals = it.signals.map(s=>Object.assign({}, s));
+    if(it.sigNeed>1) obj.userData.sigNeed = +it.sigNeed;
+    if(it.grabLabel) obj.userData.grabLabel = it.grabLabel;
+    setPropDynamic(obj, true);
+    if(typeof grabSpecificProp==='function') grabSpecificProp(obj);   // straight into your hands
+  }, undefined, 'loop', null);
+  if(typeof toast==='function') toast('Holding '+((it.name)||id)+' \u2014 [G] place it');
+  return true;
 }
 window.giveItem=giveItem; window.defineItem=defineItem; window.useItem=useItem;   // used by editor authoring + console testing
 function openInventory(){ if(invOpen) return; invOpen=true; if(typeof safeExitPointerLock==='function') safeExitPointerLock();
@@ -14652,7 +14674,7 @@ function openInspect(id){
   if(it.desc){ const d=document.createElement('div'); d.style.cssText='margin-top:10px;font-size:13px;color:#bfe0d2;line-height:1.5;'; d.textContent=it.desc; card.appendChild(d); }
   if(it.useType && it.useType!=='none' && typeof gameOn!=='undefined' && gameOn){
     const ub=document.createElement('button');
-    ub.textContent = it.useType==='key' ? ('Use \u2014 '+(it.useKey||'gold')+' key') : it.useType==='heal' ? ('Use \u2014 +'+(+it.useAmount||25)+' HP') : it.useType==='ammo' ? 'Use \u2014 refill ammo' : 'Use';
+    ub.textContent = it.useType==='key' ? ('Use \u2014 '+(it.useKey||'gold')+' key') : it.useType==='heal' ? ('Use \u2014 +'+(+it.useAmount||25)+' HP') : it.useType==='ammo' ? 'Use \u2014 refill ammo' : it.useType==='place' ? 'Use \u2014 hold & place' : 'Use';
     ub.style.cssText='margin-top:14px;width:100%;padding:11px 0;border-radius:9px;border:1px solid #1f6f4a;background:#16432e;color:#9fe6cf;font-family:var(--display-font);font-size:15px;letter-spacing:1px;cursor:pointer;transition:background .15s,transform .12s;';
     ub.onmouseenter=()=>{ ub.style.background='#1f6f4a'; ub.style.color='#fff'; ub.style.transform='translateY(-1px)'; };
     ub.onmouseleave=()=>{ ub.style.background='#16432e'; ub.style.color='#9fe6cf'; ub.style.transform='none'; };
@@ -14857,7 +14879,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 687 · 2026-06-24';
+const BUILD_VERSION = 'build 688 · 2026-06-24';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15493,14 +15515,19 @@ function _aimedProp(){
   if(hits[0].distance > range) return null;   // aiming at it, but the player isn't close enough yet
   return node;
 }
-function tryGrabProp(){
-  if(!gameOn || editorOpen || shopOpen || paused || duelDead) return false;
-  const obj=_aimedProp(); if(!obj) return false;
+// Pick up a SPECIFIC prop (used by the normal aim-grab and by "use" of a placeable inventory item, build 688).
+function grabSpecificProp(obj){
+  if(!obj) return false;
   heldProp=obj; camera.getWorldPosition(_hPos);
   heldDist=Math.max(HOLD_MIN, Math.min(HOLD_MAX, _hPos.distanceTo(obj.position)));
   if(NET.mode==='client'){ heldNidLocal=obj.userData.nid; sendToPlayer(0, {t:'grab', nid:heldNidLocal}); }
   if(typeof SFX!=='undefined' && SFX.swap) SFX.swap();
   updateGrabHint(); return true;
+}
+function tryGrabProp(){
+  if(!gameOn || editorOpen || shopOpen || paused || duelDead) return false;
+  const obj=_aimedProp(); if(!obj) return false;
+  return grabSpecificProp(obj);
 }
 function _localHoldTarget(){
   camera.getWorldPosition(_hPos); camera.getWorldDirection(_hFwd);
@@ -20595,6 +20622,82 @@ function _pickupXformPanel(host, sp, i){
     r.appendChild(cb); r.appendChild(document.createTextNode('Require interact (press E to pick up)')); panel.appendChild(r); }
   host.appendChild(panel);
 }
+// build 688: a reusable Signals editor (tag + needs + signal rows). `store` is any object that holds .tag/.sigNeed/
+// .signals (a prop's userData OR an inventory-item def); `rerender` rebuilds the owning panel after a change.
+function buildSignalsUI(sgBody, store, rerender){
+  { const tr=document.createElement('div'); tr.style.cssText='display:flex;gap:6px;align-items:center;margin:2px 0 4px;font-size:11px;color:#9fe6cf;';
+    const tsp=document.createElement('span'); tsp.textContent='Tag'; tsp.style.minWidth='56px';
+    const tin=document.createElement('input'); tin.type='text'; tin.placeholder='e.g. vaultDoor'; tin.value=store.tag||'';
+    tin.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:3px 6px;font-size:12px;';
+    tin.onchange=()=>{ pushUndoSnapshot(); const v=tin.value.trim(); if(v) store.tag=v; else delete store.tag; };
+    tr.appendChild(tsp); tr.appendChild(tin); sgBody.appendChild(tr); }
+  { const nr=document.createElement('div'); nr.style.cssText='display:flex;gap:6px;align-items:center;margin:0 0 4px;font-size:11px;color:#9fe6cf;';
+    const nsp=document.createElement('span'); nsp.innerHTML='<b>Needs</b>'; nsp.style.minWidth='56px'; nsp.title='How many incoming signals this absorbs before it reacts';
+    const nin=document.createElement('input'); nin.type='number'; nin.min='1'; nin.max='20'; nin.value=store.sigNeed||1;
+    nin.style.cssText='width:54px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
+    nin.onchange=()=>{ pushUndoSnapshot(); const v=Math.max(1, Math.min(20, parseInt(nin.value)||1)); if(v>1) store.sigNeed=v; else delete store.sigNeed; nin.value=v; };
+    const nl=document.createElement('span'); nl.textContent='signal(s) before it reacts'; nl.style.fontSize='10px';
+    nr.appendChild(nsp); nr.appendChild(nin); nr.appendChild(nl); sgBody.appendChild(nr); }
+  const sigs = store.signals || (store.signals=[]);
+  sigs.forEach((s,si)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;gap:4px;align-items:center;margin:0 0 3px;';
+    const mkSel=(opts,val,on)=>{ const e=document.createElement('select'); e.style.cssText='font-size:11px;flex:1;'; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if(val===o[0]) op.selected=true; e.appendChild(op); }); e.onchange=()=>{ pushUndoSnapshot(); on(e.value); rerender(); }; return e; };
+    r.appendChild(mkSel([['destroyed','On destroyed'],['interacted','On E'],['contact','On object placed']], s.when, v=>{ s.when=v; }));
+    r.appendChild(mkSel([['toggle','Toggle'],['open','Open'],['close','Close'],['anim','Play anim'],['unlock','Unlock'],['win','Win level'],['cutscene','Play cutscene']], s.do, v=>{ s.do=v; }));
+    const ti=document.createElement('input'); ti.type='text'; ti.placeholder='target tag'; ti.value=s.target||'';
+    ti.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
+    ti.onchange=()=>{ pushUndoSnapshot(); s.target=ti.value.trim(); rerender(); };
+    const del=document.createElement('button'); del.textContent='×'; del.style.cssText='padding:1px 7px;font-size:12px;';
+    del.onclick=()=>{ pushUndoSnapshot(); sigs.splice(si,1); rerender(); };
+    r.appendChild(ti); r.appendChild(del); sgBody.appendChild(r);
+    if(s.when==='contact'){
+      const cr=document.createElement('div'); cr.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
+      const fi=document.createElement('input'); fi.type='text'; fi.placeholder='object tag (blank = any prop)'; fi.value=s.from||'';
+      fi.title='Only an object carrying this tag triggers it (blank = any physical prop)';
+      fi.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
+      fi.onchange=()=>{ pushUndoSnapshot(); const v=fi.value.trim(); if(v) s.from=v; else delete s.from; };
+      const mi=document.createElement('select'); mi.style.cssText='flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 4px;font-size:10px;';
+      for(const [v,t] of [['','Touching it'],['1','Inside it']]){ const op=document.createElement('option'); op.value=v; op.textContent=t; if((s.contain?'1':'')===v) op.selected=true; mi.appendChild(op); }
+      mi.onchange=()=>{ pushUndoSnapshot(); if(mi.value) s.contain=true; else delete s.contain; };
+      cr.appendChild(fi); cr.appendChild(mi); sgBody.appendChild(cr);
+    }
+    if(s.do==='cutscene'){
+      const nr2=document.createElement('div'); nr2.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
+      const ni2=document.createElement('input'); ni2.type='text'; ni2.placeholder='cutscene name (blank = #1)'; ni2.value=s.cs||'';
+      ni2.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
+      ni2.onchange=()=>{ pushUndoSnapshot(); const v=ni2.value.trim(); if(v) s.cs=v; else delete s.cs; };
+      nr2.appendChild(ni2); sgBody.appendChild(nr2);
+    }
+    if(s.do==='anim'){
+      const cr2=document.createElement('div'); cr2.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
+      const tag = (s.target||'').trim();
+      const names = new Set();
+      if(tag){ for(const o of propModels){ if(o && o.userData.tag===tag && o.userData.animClipNames){ for(const nm of o.userData.animClipNames){ if(nm) names.add(nm); } } } }
+      if(!names.size && store.animClipNames){ for(const nm of store.animClipNames){ if(nm) names.add(nm); } }
+      const nameArr = [...names];
+      if(nameArr.length){
+        const cs=document.createElement('select'); cs.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
+        const o0=document.createElement('option'); o0.value=''; o0.textContent='(all clips)'; cs.appendChild(o0);
+        let known=false;
+        for(const nm of nameArr){ const o=document.createElement('option'); o.value=nm; o.textContent=nm; if(nm===s.clip) known=true; cs.appendChild(o); }
+        if(s.clip && !known){ const o=document.createElement('option'); o.value=s.clip; o.textContent=s.clip+' (other)'; cs.appendChild(o); }
+        cs.value=s.clip||'';
+        cs.onchange=()=>{ pushUndoSnapshot(); if(cs.value) s.clip=cs.value; else delete s.clip; };
+        cr2.appendChild(cs);
+      } else {
+        const ci=document.createElement('input'); ci.type='text'; ci.placeholder=tag?('no clips found on “'+tag+'” — type a clip name'):'clip name (blank = all clips)'; ci.value=s.clip||'';
+        ci.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
+        ci.onchange=()=>{ pushUndoSnapshot(); const v=ci.value.trim(); if(v) s.clip=v; else delete s.clip; };
+        cr2.appendChild(ci);
+      }
+      sgBody.appendChild(cr2);
+    } });
+  { const add=document.createElement('button'); add.textContent='+ Add signal'; add.style.cssText='padding:2px 9px;font-size:11px;margin:1px 0 2px;';
+    add.onclick=()=>{ pushUndoSnapshot(); sigs.push({ when:'interacted', do:'toggle', target:'' }); rerender(); };
+    sgBody.appendChild(add); }
+  { const n=document.createElement('div'); n.className='hint'; n.style.margin='2px 0 0';
+    n.innerHTML='Fire the action on every prop carrying the target tag when this is destroyed, E-activated, or has an object placed on/in it. <b>On object placed</b>: a box on a plate (Touching it) or an item in a bin (Inside it).';
+    sgBody.appendChild(n); }
+}
 function renderInvItems(host){
   const hint=(h, html, margin)=>{ const d=document.createElement('div'); d.className='hint'; d.style.margin=margin||'6px 0 4px'; d.innerHTML=html; h.appendChild(d); return d; };
   host.innerHTML='';
@@ -20618,9 +20721,19 @@ function renderInvItems(host){
     const typeS=document.createElement('select'); typeS.style.cssText=IST; [['object','3D object (rotate / zoom)'],['journal','Journal / note (text page)']].forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if((it.type||'object')===o[0]) op.selected=true; typeS.appendChild(op); }); typeS.onchange=()=>{ pushUndoSnapshot(); it.type=typeS.value; renderInvItems(host); }; field('Type', typeS);
     const descT=document.createElement('textarea'); descT.value=it.desc||''; descT.rows=2; descT.style.cssText=IST+'resize:vertical;'; descT.oninput=()=>{ it.desc=descT.value; }; field('Description (shown under the item)', descT);
     // ---- Use action (build 607): what the "Use" button in the inspector does ----
-    const useS=document.createElement('select'); useS.style.cssText=IST; [['none','Not usable'],['key','Unlock (acts as a key)'],['heal','Heal the player'],['ammo','Refill all ammo']].forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if((it.useType||'none')===o[0]) op.selected=true; useS.appendChild(op); }); useS.onchange=()=>{ pushUndoSnapshot(); it.useType=useS.value; renderInvItems(host); }; field('Use action', useS);
+    const useS=document.createElement('select'); useS.style.cssText=IST; [['none','Not usable'],['key','Unlock (acts as a key)'],['heal','Heal the player'],['ammo','Refill all ammo'],['place','Place in the world (hold & drop)']].forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if((it.useType||'none')===o[0]) op.selected=true; useS.appendChild(op); }); useS.onchange=()=>{ pushUndoSnapshot(); it.useType=useS.value; renderInvItems(host); }; field('Use action', useS);
     if((it.useType||'none')==='key'){ const kI=document.createElement('input'); kI.type='text'; kI.value=it.useKey||'gold'; kI.placeholder='e.g. gold, blue, red'; kI.style.cssText=IST; kI.oninput=()=>{ it.useKey=kI.value.trim()||'gold'; }; field('Key color (match the locked prop\u2019s key)', kI); }
     if((it.useType||'none')==='heal'){ const aI=document.createElement('input'); aI.type='number'; aI.min='1'; aI.max='999'; aI.step='1'; aI.value=it.useAmount||25; aI.style.cssText=IST; aI.onchange=()=>{ it.useAmount=Math.max(1,Math.min(999,parseInt(aI.value)||25)); }; field('Heal amount (HP)', aI); }
+    if((it.useType||'none')==='place'){   // build 688: a held-then-placed item carries its own tag + signals into the world
+      const ph=document.createElement('div'); ph.className='hint'; ph.style.margin='2px 0 4px'; ph.innerHTML='Using it puts the item’s model in the player’s hands; they press <b>G</b> to place it (and can pick it back up). Tag it + add <b>signals</b> below so placing it can unlock a door, complete a puzzle, fire a cutscene, etc.';
+      form.appendChild(ph);
+      const glI=document.createElement('input'); glI.type='text'; glI.value=it.grabLabel||''; glI.placeholder='e.g. Sacred Idol — [G] to place'; glI.maxLength=80; glI.style.cssText=IST; glI.onchange=()=>{ const v=glI.value.trim().slice(0,80); if(v) it.grabLabel=v; else delete it.grabLabel; }; field('Carry label (optional)', glI);
+      const sgWrap=document.createElement('div'); sgWrap.style.cssText='border:1px solid #243640;border-radius:6px;padding:7px;margin:4px 0;background:#0c1418;';
+      const sgH=document.createElement('div'); sgH.className='hint'; sgH.style.margin='0 0 4px'; sgH.innerHTML='<b>Signals on the placed item</b>';
+      sgWrap.appendChild(sgH);
+      buildSignalsUI(sgWrap, it, ()=>renderInvItems(host));
+      form.appendChild(sgWrap);
+    }
     if((it.useType||'none')!=='none'){ const cw=document.createElement('label'); cw.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;color:#cfeee2;margin:2px 0 6px;cursor:pointer;'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=it.useConsume!==false; cb.onchange=()=>{ it.useConsume=cb.checked; }; cw.appendChild(cb); cw.appendChild(document.createTextNode('Consumed on use')); form.appendChild(cw); }
     if((it.type||'object')==='journal'){
       const jT=document.createElement('textarea'); jT.value=it.journal||''; jT.rows=6; jT.style.cssText=IST+'resize:vertical;font-family:Georgia,serif;'; jT.oninput=()=>{ it.journal=jT.value; }; field('Journal text (the page contents)', jT);
@@ -21765,80 +21878,7 @@ function renderEditorFields(){
       // ---- Signals: tag this prop / make it trigger other tagged props ----
       if(sel){
         const sgBody = edFold(animHost, 'signals', 'Signals', false, 'Tag this prop, or have it trigger others');
-        { const tr=document.createElement('div'); tr.style.cssText='display:flex;gap:6px;align-items:center;margin:2px 0 4px;font-size:11px;color:#9fe6cf;';
-          const tsp=document.createElement('span'); tsp.textContent='Tag'; tsp.style.minWidth='56px';
-          const tin=document.createElement('input'); tin.type='text'; tin.placeholder='e.g. vaultDoor'; tin.value=sel.userData.tag||'';
-          tin.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:3px 6px;font-size:12px;';
-          tin.onchange=()=>{ pushUndoSnapshot(); const v=tin.value.trim(); if(v) sel.userData.tag=v; else delete sel.userData.tag; };
-          tr.appendChild(tsp); tr.appendChild(tin); sgBody.appendChild(tr); }
-        { const nr=document.createElement('div'); nr.style.cssText='display:flex;gap:6px;align-items:center;margin:0 0 4px;font-size:11px;color:#9fe6cf;';
-          const nsp=document.createElement('span'); nsp.innerHTML='<b>Needs</b>'; nsp.style.minWidth='56px'; nsp.title='How many incoming signals this prop absorbs before it reacts';
-          const nin=document.createElement('input'); nin.type='number'; nin.min='1'; nin.max='20'; nin.value=sel.userData.sigNeed||1;
-          nin.style.cssText='width:54px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
-          nin.onchange=()=>{ pushUndoSnapshot(); const v=Math.max(1, Math.min(20, parseInt(nin.value)||1)); if(v>1) sel.userData.sigNeed=v; else delete sel.userData.sigNeed; nin.value=v; };
-          const nl=document.createElement('span'); nl.textContent='signal(s) before this prop reacts'; nl.style.fontSize='10px';
-          nr.appendChild(nsp); nr.appendChild(nin); nr.appendChild(nl); sgBody.appendChild(nr); }
-        const sigs = sel.userData.signals || (sel.userData.signals=[]);
-        sigs.forEach((s,si)=>{ const r=document.createElement('div'); r.style.cssText='display:flex;gap:4px;align-items:center;margin:0 0 3px;';
-          const mkSel=(opts,val,on)=>{ const e=document.createElement('select'); e.style.cssText='font-size:11px;flex:1;'; opts.forEach(o=>{ const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; if(val===o[0]) op.selected=true; e.appendChild(op); }); e.onchange=()=>{ pushUndoSnapshot(); on(e.value); renderEditorFields(); }; return e; };
-          r.appendChild(mkSel([['destroyed','On destroyed'],['interacted','On E'],['contact','On object placed']], s.when, v=>{ s.when=v; }));
-          r.appendChild(mkSel([['toggle','Toggle'],['open','Open'],['close','Close'],['anim','Play anim'],['unlock','Unlock'],['win','Win level'],['cutscene','Play cutscene']], s.do, v=>{ s.do=v; }));
-          const ti=document.createElement('input'); ti.type='text'; ti.placeholder='target tag'; ti.value=s.target||'';
-          ti.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:11px;';
-          ti.onchange=()=>{ pushUndoSnapshot(); s.target=ti.value.trim(); renderEditorFields(); };   // re-render so the anim clip dropdown can list the new target's clips
-          const del=document.createElement('button'); del.textContent='\u00d7'; del.style.cssText='padding:1px 7px;font-size:12px;';
-          del.onclick=()=>{ pushUndoSnapshot(); sigs.splice(si,1); renderEditorFields(); };
-          r.appendChild(ti); r.appendChild(del); sgBody.appendChild(r);
-          if(s.when==='contact'){   // build 682: what counts as "placed" — which object, and touching vs inside
-            const cr=document.createElement('div'); cr.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
-            const fi=document.createElement('input'); fi.type='text'; fi.placeholder='object tag (blank = any prop)'; fi.value=s.from||'';
-            fi.title='Only an object carrying this tag triggers it (blank = any physical prop)';
-            fi.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
-            fi.onchange=()=>{ pushUndoSnapshot(); const v=fi.value.trim(); if(v) s.from=v; else delete s.from; };
-            const mi=document.createElement('select'); mi.style.cssText='flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 4px;font-size:10px;';
-            for(const [v,t] of [['','Touching it'],['1','Inside it']]){ const op=document.createElement('option'); op.value=v; op.textContent=t; if((s.contain?'1':'')===v) op.selected=true; mi.appendChild(op); }
-            mi.onchange=()=>{ pushUndoSnapshot(); if(mi.value) s.contain=true; else delete s.contain; };
-            cr.appendChild(fi); cr.appendChild(mi); sgBody.appendChild(cr);
-          }
-          if(s.do==='cutscene'){   // which named cutscene; blank = cutscene #1 (the intro)
-            const nr2=document.createElement('div'); nr2.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
-            const ni2=document.createElement('input'); ni2.type='text'; ni2.placeholder='cutscene name (blank = #1)'; ni2.value=s.cs||'';
-            ni2.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
-            ni2.onchange=()=>{ pushUndoSnapshot(); const v=ni2.value.trim(); if(v) s.cs=v; else delete s.cs; };
-            nr2.appendChild(ni2); sgBody.appendChild(nr2);
-          }
-          if(s.do==='anim'){   // name one clip from the TARGET prop's GLB; blank = play them all
-            const cr2=document.createElement('div'); cr2.style.cssText='display:flex;gap:4px;align-items:center;margin:-1px 0 4px;padding-left:8px;';
-            // collect animation clip names from every prop carrying the target tag (that's what this signal plays).
-            // fall back to this prop's own clips (self-signal), then to free text if nothing is known yet.
-            const tag = (s.target||'').trim();
-            const names = new Set();
-            if(tag){ for(const o of propModels){ if(o && o.userData.tag===tag && o.userData.animClipNames){ for(const nm of o.userData.animClipNames){ if(nm) names.add(nm); } } } }
-            if(!names.size && sel.userData.animClipNames){ for(const nm of sel.userData.animClipNames){ if(nm) names.add(nm); } }
-            const nameArr = [...names];
-            if(nameArr.length){
-              const cs=document.createElement('select'); cs.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
-              const o0=document.createElement('option'); o0.value=''; o0.textContent='(all clips)'; cs.appendChild(o0);
-              let known=false;
-              for(const nm of nameArr){ const o=document.createElement('option'); o.value=nm; o.textContent=nm; if(nm===s.clip) known=true; cs.appendChild(o); }
-              if(s.clip && !known){ const o=document.createElement('option'); o.value=s.clip; o.textContent=s.clip+' (other)'; cs.appendChild(o); }   // a clip whose target isn't loaded yet survives
-              cs.value=s.clip||'';
-              cs.onchange=()=>{ pushUndoSnapshot(); if(cs.value) s.clip=cs.value; else delete s.clip; };
-              cr2.appendChild(cs);
-            } else {
-              const ci=document.createElement('input'); ci.type='text'; ci.placeholder=tag?('no clips found on \u201c'+tag+'\u201d \u2014 type a clip name'):'clip name (blank = all clips)'; ci.value=s.clip||'';
-              ci.style.cssText='flex:1;background:#0c1418;border:1px solid #2a3a42;color:#9fe6cf;border-radius:4px;padding:2px 5px;font-size:10px;';
-              ci.onchange=()=>{ pushUndoSnapshot(); const v=ci.value.trim(); if(v) s.clip=v; else delete s.clip; };
-              cr2.appendChild(ci);
-            }
-            sgBody.appendChild(cr2);
-          } });
-        { const add=document.createElement('button'); add.textContent='+ Add signal'; add.style.cssText='padding:2px 9px;font-size:11px;margin:1px 0 2px;';
-          add.onclick=()=>{ pushUndoSnapshot(); sigs.push({ when:'interacted', do:'toggle', target:'' }); renderEditorFields(); };
-          sgBody.appendChild(add); }
-        { const n=document.createElement('div'); n.className='hint'; n.style.margin='2px 0 0';
-          n.innerHTML='When this prop is destroyed, E-activated, or has an object placed on/in it, fire the action on every prop carrying the target tag. <b>On object placed</b>: drop a box on a pressure plate (Touching it) or an item into a bin (Inside it) — optionally limit it to one tagged object.';
-          sgBody.appendChild(n); }
+        buildSignalsUI(sgBody, sel.userData, renderEditorFields);   // build 688: shared with inventory-item signals
       }
       // ---- Mechanism: move/rotate this object into a platform, door, elevator, etc. ----
       if(sel){
