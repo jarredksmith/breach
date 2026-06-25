@@ -6608,6 +6608,10 @@ function flashToast(msg){
   t.textContent = msg; t.style.opacity='1';
   clearTimeout(t._t); t._t = setTimeout(()=>{ t.style.opacity='0'; }, 2600);
 }
+// build 700: ~19 call sites notify via `toast(msg)` behind an `if(typeof toast==='function')` guard, but `toast`
+// was never defined — so those notices (Checkpoint reached, Respawned, AI-furnish progress, key saved, texture
+// cap…) silently never showed. Alias it to the real toaster so the guard passes and the messages appear.
+const toast = flashToast;
 
 // ---------- Hosted 3D model props (.glb) ----------
 // Loads a .glb from a URL and scatters clones around the arena as solid, climbable,
@@ -15025,7 +15029,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 699 · 2026-06-25';
+const BUILD_VERSION = 'build 700 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
