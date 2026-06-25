@@ -3,12 +3,12 @@ const src = gameSource();
 // build 345: signal counters ("needs N"), Win level action, and run-state reset at deploy.
 
 // --- executable: counter + win semantics ---
-const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET','gameWon',
+const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET','gameWon','lightModels','setLightOn','broadcastLight',
   extractFunction('_applySignalAction') + '\n' + extractFunction('fireSignals') + '\nreturn fireSignals;');
 const mk = (net) => {
   const calls = { xbc:[], won:0 };
   const props = [ { userData:{ tag:'vault', xa:{ on:true, dest:0 }, sigNeed:3 } } ];
-  const f = fn(props, o=>{ o.userData.xa.dest = o.userData.xa.dest?0:1; }, i=>calls.xbc.push(i), ()=>{}, ()=>{}, ()=>{}, net||{ mode:'off' }, ()=>calls.won++);
+  const f = fn(props, o=>{ o.userData.xa.dest = o.userData.xa.dest?0:1; }, i=>calls.xbc.push(i), ()=>{}, ()=>{}, ()=>{}, net||{ mode:'off' }, ()=>calls.won++, [], ()=>{}, ()=>{});   // build 699: lightModels/setLightOn/broadcastLight stubs
   return { f, props, calls };
 };
 { const { f, props, calls } = mk();

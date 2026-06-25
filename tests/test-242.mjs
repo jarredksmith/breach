@@ -3,7 +3,7 @@ const src = gameSource();
 // build 341: tags + signals — props can trigger actions on other tagged props.
 
 // --- executable: fireSignals across the action matrix ---
-const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET',
+const fn = new Function('propModels','xaToggle','broadcastXAnim','broadcastAnim','broadcastUnlock','playPropAnimationOnce','NET','lightModels','setLightOn','broadcastLight',
   extractFunction('_applySignalAction') + '\n' + extractFunction('fireSignals') + '\nreturn fireSignals;');
 const mk = () => {
   const calls = { toggle:[], xbc:[], abc:[], ubc:[], anim:[] };
@@ -17,7 +17,7 @@ const mk = () => {
   const f = fn(props,
     o=>{ calls.toggle.push(o); o.userData.xa.dest = o.userData.xa.dest?0:1; },
     i=>calls.xbc.push(i), i=>calls.abc.push(i), i=>calls.ubc.push(i),
-    o=>calls.anim.push(o), { mode:'off' });
+    o=>calls.anim.push(o), { mode:'off' }, [], ()=>{}, ()=>{});   // build 699: lightModels/setLightOn/broadcastLight stubs (no lights in this matrix)
   return { f, props, calls };
 };
 { const { f, props, calls } = mk();

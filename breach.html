@@ -7148,6 +7148,15 @@ function _applySignalAction(s){
         else if(s.do==='unlock'){ if(t.userData.lockId && !t.userData.unlocked){ t.userData.unlocked=true; broadcastUnlock(i); } }
       }catch(e){}
     }
+    // build 699: the same Open/Close/Toggle verbs also drive tagged SCENE LIGHTS (Open=on, Close=off, Toggle=flip),
+    // so a plate/switch can light a dark room. Lights live in their own array, separate from propModels.
+    if(s.do==='toggle' || s.do==='open' || s.do==='close'){
+      for(let i=0;i<lightModels.length;i++){
+        const g=lightModels[i]; if(!g || !g.userData || g.userData.tag!==s.target) continue;
+        const on = (s.do==='toggle') ? (g.userData.lon===false) : (s.do==='open');
+        try{ setLightOn(g, on); broadcastLight(i, on); }catch(e){}
+      }
+    }
 }
 // build 682: CONTACT signals (when:'contact') fire when another prop is touching this one (a box on a pressure
 // plate) or sitting inside it (an item dropped in a bin). Authoritative side only (host/solo); the actions
@@ -7188,6 +7197,38 @@ function broadcastUnlock(i){
 function broadcastXAnim(i){ const o=propModels[i]; const dest=(o&&o.userData.xa)?(o.userData.xa.dest?1:0):0;
   if(NET.mode==='host'){ for(const cid in NET.conns){ try{ NET.conns[cid].send({t:'xa', i, dest}); }catch(e){} } }
   else if(NET.mode==='client'){ if(NET.conn) try{ NET.conn.send({t:'xa', i, dest}); }catch(e){} } }
+// build 699: signal-controlled scene lights. setLightOn flips the target; updateLights fades the real intensity to it.
+function setLightOn(g, on){ if(g && g.userData) g.userData.lon = !!on; }
+function broadcastLight(i, on){
+  if(NET.mode==='host'){ for(const cid in NET.conns){ try{ NET.conns[cid].send({t:'lit', i, on:!!on}); }catch(e){} } }
+  else if(NET.mode==='client'){ if(NET.conn) try{ NET.conn.send({t:'lit', i, on:!!on}); }catch(e){} } }
+// Ease each light toward its on/off target. Skipped in the editor, where every light is held at full so it can be
+// seen/aimed. litI is the authored brightness (the on-value); off = 0; lfade is the ramp in seconds (0 = instant).
+function updateLights(dt){
+  if(typeof editorOpen!=='undefined' && editorOpen) return;
+  for(const g of lightModels){
+    const ud=g.userData, L=ud&&ud.light; if(!L) continue;
+    const tgt = (ud.lon===false) ? 0 : (ud.litI!=null ? ud.litI : L.intensity);
+    if(L.intensity===tgt) continue;
+    const fade = ud.lfade||0;
+    if(fade<=0){ L.intensity=tgt; continue; }
+    const step = (Math.max(0.01, ud.litI||1)/fade)*dt;
+    L.intensity = (L.intensity<tgt) ? Math.min(tgt, L.intensity+step) : Math.max(tgt, L.intensity-step);
+  }
+}
+// At deploy, apply each light's authored start state (a "start off" light begins dark, lit later by a signal).
+function initSceneLights(){
+  for(const g of lightModels){ const ud=g.userData, L=ud&&ud.light; if(!L) continue;
+    ud.lon = !ud.startOff;
+    L.intensity = ud.lon ? (ud.litI!=null?ud.litI:L.intensity) : 0;
+  }
+}
+// Back in the editor: relight every light at full, regardless of its deploy start state, so it's visible to author.
+function _lightsToFull(){
+  for(const g of lightModels){ const ud=g.userData, L=ud&&ud.light; if(!L) continue;
+    ud.lon=true; if(ud.litI!=null) L.intensity=ud.litI;
+  }
+}
 const _xaCur=new THREE.Matrix4(), _xaPrevM=new THREE.Matrix4(), _xaDelta=new THREE.Matrix4(), _xaPt=new THREE.Vector3(), _xaPt2=new THREE.Vector3(), _xaPrevP=new THREE.Vector3(), _xaPrevQ=new THREE.Quaternion(), _xaUp=new THREE.Vector3();
 const _xaPivQ=new THREE.Quaternion(), _xaPivQ2=new THREE.Quaternion(), _xaPivE=new THREE.Euler(), _xaPivE2=new THREE.Euler(), _xaPivV=new THREE.Vector3(), _xaPivV2=new THREE.Vector3();
 const XA_LAUNCH=9;   // surface speed (m/s) past which a moving prop FLINGS the player (trebuchet/launcher) instead of carrying them (elevator)
@@ -8146,6 +8187,9 @@ function _lightOpts(g){
   if(type==='spot'){ o.angle=+L.angle; o.penumbra=+L.penumbra; }
   if(type==='spot'||type==='dir') o.dir=(g.userData.dir||[0,-1.3]).slice();
   if(type==='hemi') o.ground=hx(L.groundColor);
+  if(g.userData.tag) o.tag=g.userData.tag;                                          // build 699: signal target + start state
+  if(g.userData.startOff) o.startOff=true;
+  if(g.userData.lfade!=null && g.userData.lfade!==0.4) o.fade=+g.userData.lfade;
   return o;
 }
 function buildLight(opts){
@@ -8173,6 +8217,12 @@ function buildLight(opts){
   g.userData.light = light;
   g.userData.marker = marker;
   g.userData.ltype = type;
+  // build 699: signal-controllable lights. litI is the authored "full" brightness (the on-value); fades restore to it.
+  g.userData.litI = inten;
+  g.userData.lon = true;                                       // current on/off state (signals flip it; re-applied at deploy)
+  if(opts.tag) g.userData.tag = String(opts.tag).slice(0,40);  // name it so a signal's Open/Close/Toggle can target it
+  g.userData.lfade = (opts.fade!=null ? +opts.fade : 0.4);     // seconds to fade on/off (0 = instant)
+  g.userData.startOff = !!opts.startOff;                       // start dark at deploy, lit later by a signal
   if(type==='spot' || type==='dir'){   // direction stick (child of the marker, so it shows/hides with it)
     const st=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,1.8,6), new THREE.MeshBasicMaterial({color:mcol}));
     marker.add(st); g.userData.dirStick=st;
@@ -13261,6 +13311,7 @@ function handleClientMsg(conn, msg){
       else if(msg.t==='cine'){ const cc=cutsceneByName(msg.n); if(cc && !editorOpen && !_cineActive && _ccHasData(cc)) startCinematic({ shots: cineShotsOf(cc), audio: cc.audio }, false); for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'cine', n:msg.n}); }catch(e){} } } }   // host plays it too, then relays
   else if(msg.t==='xa'){ const o=propModels[msg.i]; if(o&&o.userData.xa) o.userData.xa.dest=msg.dest?1:0; for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'xa', i:msg.i, dest:msg.dest}); }catch(e){} } } }   // mechanism toggle + relay
       else if(msg.t==='unlock'){ const o=propModels[msg.i]; if(o) o.userData.unlocked=true; for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'unlock', i:msg.i}); }catch(e){} } } }   // a client used a key + relay
+      else if(msg.t==='lit'){ const g=lightModels[msg.i]; if(g) setLightOn(g, msg.on); for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'lit', i:msg.i, on:msg.on}); }catch(e){} } } }   // build 699: a signal toggled a scene light + relay
   else if(msg.t==='pAdd'){ if(netApplyAddProp(msg.d)) relayProp({t:'pAdd', d:msg.d}, id); }       // a client added a prop -> mirror + relay
   else if(msg.t==='pDel'){ if(netApplyDelProp(msg.nid)) relayProp({t:'pDel', nid:msg.nid}, id); } // a client deleted a prop
   else if(msg.t==='pMov'){ if(netApplyMovProp(msg.nid, msg.x)) relayProp({t:'pMov', nid:msg.nid, x:msg.x}, id); } // a client moved a prop
@@ -13311,6 +13362,7 @@ function handleHostMsg(msg){
       else if(msg.t==='cine'){ const cc=cutsceneByName(msg.n); if(cc && !editorOpen && !_cineActive && _ccHasData(cc)) startCinematic({ shots: cineShotsOf(cc), audio: cc.audio }, false); }   // a story beat fired somewhere
   else if(msg.t==='xa'){ const o=propModels[msg.i]; if(o&&o.userData.xa) o.userData.xa.dest=msg.dest?1:0; }   // a mechanism toggled somewhere
       else if(msg.t==='unlock'){ const o=propModels[msg.i]; if(o) o.userData.unlocked=true; }   // someone used a key on this prop
+      else if(msg.t==='lit'){ const g=lightModels[msg.i]; if(g) setLightOn(g, msg.on); }   // build 699: a scene light toggled somewhere
   else if(msg.t==='pAdd'){ netApplyAddProp(msg.d); }    // host/other player added a prop
   else if(msg.t==='pDel'){ netApplyDelProp(msg.nid); }  // a prop was deleted
   else if(msg.t==='pMov'){ netApplyMovProp(msg.nid, msg.x); }   // a prop was moved/rotated/scaled
@@ -14973,7 +15025,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 698 · 2026-06-24';
+const BUILD_VERSION = 'build 699 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18259,6 +18311,7 @@ function loop(){
   updateHurtDir(dt);     // directional hit indicator
   if(typeof navWarmupTick==='function' && navWarmupTick(dt)){ /* bots held during pre-match build/countdown */ } else updateBots(dt);
   updateXAnim(dt);                       // moving platforms / doors (all peers)
+  updateLights(dt);                      // build 699: fade signal-controlled scene lights on/off
   tickGrabHint(dt);                      // "[E] Grab" / carry prompt
   tickContactSignals(dt);                // build 682: prop-on-prop contact / containment signals
   tickGoalBanner(dt);                    // build 692: objective banner fade
@@ -18818,7 +18871,7 @@ const editorTargets = {
       if(t==='hemi'){ this.state.gr=Math.round(L.groundColor.r*255); this.state.gg=Math.round(L.groundColor.g*255); this.state.gb=Math.round(L.groundColor.b*255); } },
     apply(){ const g=this.obj(), s=this.state; if(!g) return; const L=g.userData.light, t=g.userData.ltype||'point';
       g.position.set(s.px,s.py,s.pz);
-      L.intensity=s.intensity;
+      L.intensity=s.intensity; g.userData.litI=s.intensity;   // build 699: the slider sets the light's "on" brightness
       if(t==='point'||t==='spot') L.distance=s.distance;
       if(t==='spot'){ L.angle=Math.max(0.02, Math.min(Math.PI/2-0.01, s.angle)); L.penumbra=Math.max(0, Math.min(1, s.penumbra)); }
       if(t==='spot'||t==='dir') _aimLight(g, s.dyaw, s.dpitch);
@@ -22639,6 +22692,26 @@ function renderEditorFields(){
       }
       sel.onchange = ()=>{ changeLightType(tgt.idx, sel.value); };
       lab.appendChild(sp); lab.appendChild(sel); urlHost.appendChild(lab);
+      // build 699: tag + signal control — a tagged light can be turned on/off (or faded) by any signal
+      const tagWrap=document.createElement('label'); tagWrap.className='field';
+      const tsp=document.createElement('span'); tsp.textContent='Tag';
+      const tin=document.createElement('input'); tin.type='text'; tin.maxLength=40; tin.placeholder='name it to target with signals'; tin.value=g0.userData.tag||'';
+      tin.style.cssText='flex:1;min-width:0;background:#0c1418;color:#cfeee2;border:1px solid #2a3a42;border-radius:5px;padding:3px 5px;font:inherit;';
+      tin.onchange=()=>{ pushUndoSnapshot(); const v=tin.value.trim().slice(0,40); if(v) g0.userData.tag=v; else delete g0.userData.tag; };
+      tagWrap.appendChild(tsp); tagWrap.appendChild(tin); urlHost.appendChild(tagWrap);
+      const soLab=document.createElement('label'); soLab.style.cssText='display:flex;gap:6px;align-items:center;margin:6px 0 2px;font-size:11px;color:#9fe6cf;cursor:pointer;';
+      const soCb=document.createElement('input'); soCb.type='checkbox'; soCb.checked=!!g0.userData.startOff;
+      soCb.onchange=()=>{ pushUndoSnapshot(); g0.userData.startOff=soCb.checked; if(!soCb.checked) delete g0.userData.startOff; };
+      const soSp=document.createElement('span'); soSp.textContent='Starts off (lit by a signal)';
+      soLab.appendChild(soCb); soLab.appendChild(soSp); urlHost.appendChild(soLab);
+      const fdWrap=document.createElement('label'); fdWrap.className='field';
+      const fsp=document.createElement('span'); fsp.textContent='Fade (s)';
+      const fin=document.createElement('input'); fin.type='number'; fin.className='valnum'; fin.step=0.1; fin.min=0; fin.value=(g0.userData.lfade!=null?g0.userData.lfade:0.4);
+      fin.onchange=()=>{ pushUndoSnapshot(); let v=parseFloat(fin.value); if(isNaN(v)||v<0) v=0; g0.userData.lfade=v; fin.value=v; };
+      fdWrap.appendChild(fsp); fdWrap.appendChild(fin); urlHost.appendChild(fdWrap);
+      const lh=document.createElement('div'); lh.className='hint'; lh.style.margin='3px 0 6px';
+      lh.innerHTML='Give the light a <b>Tag</b>, then point a signal at it: <b>Open</b> = on, <b>Close</b> = off, <b>Toggle</b> = flip. Tick <b>Starts off</b> so a switch or pressure plate can light a dark room. <b>Fade</b> is the on/off ramp (0 = instant).';
+      urlHost.appendChild(lh);
     }
   }
   if(tgt.isSpawns){
@@ -23449,6 +23522,7 @@ function toggleEditor(){
     for(const p of powerups){ if(p.mesh) p.mesh.visible=false; }   // hide live pads while editing — markers stand in (updatePowerups is paused in the editor and re-shows ready pads on close)
     if(isTouch){ editorFreeFly=true; flyInit=false; }   // mobile: fly-around editing (joystick moves, drag the left side to look)
     for(const g of lightModels){ if(g.userData.marker) g.userData.marker.visible = true; }
+    if(typeof _lightsToFull==='function') _lightsToFull();   // build 699: show every light lit while editing, whatever its deploy start state
     setTurretMarkersVisible(true);
     if(typeof setSpawnMarkersVisible==='function') setSpawnMarkersVisible(true);
     if(typeof refreshAudioZoneMarkers==='function') refreshAudioZoneMarkers(); if(typeof refreshDeathZoneMarkers==='function') refreshDeathZoneMarkers(); if(typeof refreshJumpPadMarkers==='function') refreshJumpPadMarkers(); if(typeof refreshFireZones==='function') refreshFireZones(); if(typeof refreshSpawnRegionMarker==='function') refreshSpawnRegionMarker();
@@ -23568,6 +23642,7 @@ function startGame(){
   WEAPONS.sniper.mag=5; WEAPONS.sniper.reserve=20;
   reloading=false; score=0; wave=1; credits=0; grenadeCount=0; runKills=0; playerKeys={}; if(typeof renderKeyChips==='function') renderKeyChips();
   for(const o of propModels){ if(o && o.userData){ delete o.userData._sigCount; delete o.userData.unlocked; } }   // fresh run: counters back to zero, locked props re-lock (the hint always promised per-deploy)
+  if(typeof initSceneLights==='function') initSceneLights();   // build 699: "start off" lights begin dark until a signal lights them
   if(typeof startObjective==='function') startObjective();   // reset survival timer for this run
   if(typeof disposePickupMarkers==='function') disposePickupMarkers();   // remove editor previews; the live (grabbable) pads are spawned next
   if(typeof disposeAudioZoneMarkers==='function') disposeAudioZoneMarkers(); if(typeof stopAudioZones==='function') stopAudioZones();   // hide zone rings + reset zone playback for a fresh run
