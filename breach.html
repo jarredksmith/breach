@@ -8735,7 +8735,7 @@ function applyWorldCfg(){
   worldCfg.launchPower = Math.max(0.1, Math.min(5, +worldCfg.launchPower || DEFAULT_WORLD.launchPower));
   worldCfg.grav   = Math.max(1,  +worldCfg.grav   || DEFAULT_WORLD.grav);
   worldCfg.crouch = Math.max(1,  Math.min(worldCfg.walk, +worldCfg.crouch || DEFAULT_WORLD.crouch));
-  worldCfg.eyeHeight = Math.max(0.6, Math.min(2.8, worldCfg.eyeHeight == null ? DEFAULT_WORLD.eyeHeight : +worldCfg.eyeHeight));   // build 702: first-person camera height (view only; collider stays standard)
+  worldCfg.eyeHeight = Math.max(0.4, Math.min(20, worldCfg.eyeHeight == null ? DEFAULT_WORLD.eyeHeight : +worldCfg.eyeHeight));   // build 702/703: first-person camera height (view only; collider stays standard). Goes up to 20m for tall/overhead views.
   // global lighting (saved with the level)
   worldCfg.sun     = Math.max(0, worldCfg.sun     == null ? DEFAULT_WORLD.sun     : +worldCfg.sun);
   worldCfg.sky     = Math.max(0, worldCfg.sky     == null ? DEFAULT_WORLD.sky     : +worldCfg.sky);
@@ -15053,7 +15053,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 702 · 2026-06-25';
+const BUILD_VERSION = 'build 703 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -21044,8 +21044,8 @@ function renderEditorFields(){
     { const b=subSec('Movement','move',false);
       slider(b,'Walk speed','walk',4,60,1); slider(b,'Run speed','run',4,100,1); slider(b,'Crouch speed','crouch',1,40,1);
       slider(b,'Jump','jump',0,30,0.5); slider(b,'Launch power','launchPower',0.25,4,0.25); slider(b,'Gravity','grav',5,80,1);
-      slider(b,'Eye height','eyeHeight',0.6,2.8,0.05);   // build 702: first-person camera height
-      hint(b,'','1px 0 2px').textContent='Crouch: hold Ctrl (R3 on a controller). Eye height sets the first-person camera level (1.7 = default; view only, collision is unchanged). Gravity change affects props on next Deploy.'; }
+      slider(b,'Eye height','eyeHeight',0.4,20,0.05);   // build 702/703: first-person camera height (up to 20m)
+      hint(b,'','1px 0 2px').textContent='Crouch: hold Ctrl (R3 on a controller). Eye height sets the first-person camera level (1.7 = default; up to 20m for a tall/overhead view). View only — collision is unchanged. Gravity change affects props on next Deploy.'; }
     { const b=subSec('Lighting','light',true);
       slider(b,'Sun (directional)','sun',0,4,0.05); slider(b,'Sky (ambient fill)','sky',0,3,0.05); slider(b,'Brightness lift','ambient',0,2,0.05);
       const scRow=document.createElement('label'); scRow.style.cssText='display:flex;align-items:center;gap:7px;color:#9fe6cf;font-size:12px;margin:6px 0 4px;';
