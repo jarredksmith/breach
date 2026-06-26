@@ -9,7 +9,7 @@ const src = gameSource();
 assert(/body\.editing:not\(\.hudPreview\) #stats, body\.editing:not\(\.hudPreview\) #ammoPanel, body\.editing:not\(\.hudPreview\) #score, body\.editing:not\(\.hudPreview\) #wavePanel,/.test(html), 'CSS rule hides every gameplay HUD element while editing (unless HUD-previewing)');
 for(const id of ['stats','ammoPanel','score','wavePanel','bossBar','cpHud','buffs','prompt','minimap','turretHud','grabHint','hurtDir','lowhp','damage','weaponWheel'])
   assert(new RegExp('body\\.editing:not\\(\\.hudPreview\\) #'+id+'\\b').test(html), 'HUD element #'+id+' is hidden while editing');
-assert(/body\.editing:not\(\.hudPreview\) #weaponWheel \{ display: none !important; \}/.test(html), 'the rule uses display:none !important so it overrides inline styles');
+assert(/body\.editing:not\(\.hudPreview\) #dialogue \{ display: none !important; \}/.test(html), 'the rule uses display:none !important so it overrides inline styles');   // build 701: goalBanner+dialogue appended to the hide list
 
 // crosshair must NOT be in the rule
 assert(!/body\.editing[^{]*#crosshair\b/.test(html), 'the crosshair stays visible while editing');

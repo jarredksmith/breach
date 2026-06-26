@@ -39,7 +39,7 @@ assert(/body\.classList\.toggle\('hud-hide-'\+k, !!\(c\.hide && c\.hide\[k\]\)\)
 
 // --- CSS hooks exist (in the markup/style) ---
 assert(/body\.hud-hide-minimap #minimap, body\.hud-hide-score #score/.test(html), 'visibility CSS hides the chosen elements');
-assert(/body\.hud-shape-rounded #hud \.panel, body\.hud-shape-rounded #prompt, body\.hud-shape-rounded #grabHint \{ border-radius: 12px; \}/.test(html), 'rounded shape restyles the panels (incl. the interact prompt)');
+assert(/body\.hud-shape-rounded #hud \.panel, body\.hud-shape-rounded #prompt, body\.hud-shape-rounded #grabHint, body\.hud-shape-rounded #goalBanner, body\.hud-shape-rounded #dialogue \{ border-radius: 12px; \}/.test(html), 'rounded shape restyles the panels (incl. the interact prompt + objective/dialogue, build 701)');
 assert(/rgba\(8,18,22,calc\(\.82\*var\(--hud-panel-op,1\)\)\)/.test(html), 'panel background opacity is var-driven');
 assert(/#hud #hpFill \{ background: var\(--hud-health/.test(html), 'health colour recolours the integrity bar');
 assert(/#hud \{ font-family: var\(--hud-font/.test(html), 'HUD font is scoped to #hud');

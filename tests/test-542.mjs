@@ -6,7 +6,7 @@ const src = gameSource();
 // --- registered as HUD elements + toggles ---
 assert(/\{ k:'prompt',    sel:'#prompt',    label:'Interact prompt', text:true \}/.test(src), 'the interact prompt is a HUD element');
 assert(/\{ k:'grab',      sel:'#grabHint',  label:'Grab hint',       text:true \}/.test(src), 'the grab hint is a HUD element');
-assert(/const HUD_TOGGLES = \['minimap','score','wave','ammo','health','crosshair','killfeed','prompt','grab'\];/.test(src), 'both have show/hide toggles');
+assert(/const HUD_TOGGLES = \['minimap','score','wave','ammo','health','crosshair','killfeed','prompt','grab','goal','dlg'\];/.test(src), 'both have show/hide toggles');   // build 701: + goal/dlg
 
 // --- the CSS consumes the per-element transform/opacity/tint/font vars ---
 assert(/#prompt \{[^}]*transform:translateX\(-50%\) translate\(var\(--el-prompt-dx,0px\),var\(--el-prompt-dy,0px\)\) scale\(var\(--el-prompt-s,1\)\)/.test(html), 'prompt position/size from its vars');
@@ -31,6 +31,6 @@ assert(/#prompt \{[^}]*background:linear-gradient\(135deg, rgba\(8,18,22,calc\(\
 assert(/#prompt \{[^}]*border:1px solid rgba\(var\(--accent-rgb,255,209,102\),\.4\)/.test(html), 'prompt border tints with the accent');
 assert(/#grabHint \{[^}]*background:rgba\(6,12,15,calc\(\.55\*var\(--hud-panel-op,1\)\)\)[^}]*border:1px solid rgba\(var\(--accent-rgb,120,200,180\),\.3\)/.test(html), 'grab hint follows the panel-opacity + accent theme');
 assert(/body\.hud-shape-rounded #prompt, body\.hud-shape-square #prompt \{ clip-path: none !important; \}/.test(html), 'the prompt drops its angular clip for rounded/square shapes');
-assert(/body\.hud-noborder #hud \.panel, body\.hud-noborder #prompt, body\.hud-noborder #grabHint \{ border-color: transparent !important; \}/.test(html), 'no-border theme removes the prompt borders');
+assert(/body\.hud-noborder #hud \.panel, body\.hud-noborder #prompt, body\.hud-noborder #grabHint, body\.hud-noborder #goalBanner, body\.hud-noborder #dialogue \{ border-color: transparent !important; \}/.test(html), 'no-border theme removes the prompt borders');   // build 701: + goal/dlg
 
 done('build 696/697: interact prompt + grab hint are editable + themeable HUD elements');

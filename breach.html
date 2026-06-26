@@ -95,7 +95,8 @@
   body.editing:not(.hudPreview) #stats, body.editing:not(.hudPreview) #ammoPanel, body.editing:not(.hudPreview) #score, body.editing:not(.hudPreview) #wavePanel,
   body.editing:not(.hudPreview) #bossBar, body.editing:not(.hudPreview) #cpHud, body.editing:not(.hudPreview) #buffs, body.editing:not(.hudPreview) #prompt,
   body.editing:not(.hudPreview) #minimap, body.editing:not(.hudPreview) #turretHud, body.editing:not(.hudPreview) #grabHint, body.editing:not(.hudPreview) #hurtDir,
-  body.editing:not(.hudPreview) #lowhp, body.editing:not(.hudPreview) #damage, body.editing:not(.hudPreview) #weaponWheel { display: none !important; }
+  body.editing:not(.hudPreview) #lowhp, body.editing:not(.hudPreview) #damage, body.editing:not(.hudPreview) #weaponWheel,
+  body.editing:not(.hudPreview) #goalBanner, body.editing:not(.hudPreview) #dialogue { display: none !important; }
   /* HUD customization (build 665): a per-level hudCfg drives these via vars set on #hud + body classes.
      Scoped to #hud so the editor/menus are never restyled. .hudPreview (HUD editor mode) re-shows the HUD. */
   #hud { font-family: var(--hud-font, var(--ui-font)), ui-monospace, monospace; }
@@ -107,12 +108,14 @@
   body.hud-shape-rounded #wavePanel, body.hud-shape-square #wavePanel,
   body.hud-shape-rounded #score, body.hud-shape-square #score,
   body.hud-shape-rounded #prompt, body.hud-shape-square #prompt { clip-path: none !important; }
-  body.hud-shape-rounded #hud .panel, body.hud-shape-rounded #prompt, body.hud-shape-rounded #grabHint { border-radius: 12px; }
-  body.hud-shape-square #hud .panel, body.hud-shape-square #prompt, body.hud-shape-square #grabHint { border-radius: 0; }
-  body.hud-noborder #hud .panel, body.hud-noborder #prompt, body.hud-noborder #grabHint { border-color: transparent !important; }
+  body.hud-shape-rounded #hud .panel, body.hud-shape-rounded #prompt, body.hud-shape-rounded #grabHint, body.hud-shape-rounded #goalBanner, body.hud-shape-rounded #dialogue { border-radius: 12px; }
+  body.hud-shape-square #hud .panel, body.hud-shape-square #prompt, body.hud-shape-square #grabHint, body.hud-shape-square #goalBanner, body.hud-shape-square #dialogue { border-radius: 0; }
+  body.hud-noborder #hud .panel, body.hud-noborder #prompt, body.hud-noborder #grabHint, body.hud-noborder #goalBanner, body.hud-noborder #dialogue { border-color: transparent !important; }
   body.hud-hide-minimap #minimap, body.hud-hide-score #score, body.hud-hide-wave #wavePanel,
   body.hud-hide-ammo #ammoPanel, body.hud-hide-health #stats, body.hud-hide-crosshair #crosshair,
   body.hud-hide-killfeed #killFeed, body.hud-hide-prompt #prompt, body.hud-hide-grab #grabHint { display: none !important; }
+  body.hud-hide-goal #goalBanner { opacity: 0 !important; }   /* build 701: banner uses opacity (not display) so it never reflows */
+  body.hud-hide-dlg #dialogue { display: none !important; }
   /* build 666: per-element scale + nudge. transform-origin = each element's anchor corner so scaling stays put;
      elements with a base transform (wave / crosshair) keep it. Vars set by applyHudCfg on #hud. */
   #hud #stats     { transform: translate(var(--el-health-dx,0px), var(--el-health-dy,0px)) scale(var(--el-health-s,1)); transform-origin: left bottom; opacity: var(--el-health-op,1); font-family: var(--el-font, var(--hud-font, var(--ui-font))), ui-monospace, monospace; }
@@ -133,6 +136,11 @@
   body.hudPreview:not(.hud-hide-prompt) #prompt, body.hudPreview:not(.hud-hide-grab) #grabHint {
     display: block !important; pointer-events: auto; cursor: move; outline: 1px dashed rgba(var(--accent-rgb),0.7); outline-offset: 3px; }
   body.hudPreview:not(.hud-hide-prompt) #prompt:hover, body.hudPreview:not(.hud-hide-grab) #grabHint:hover { outline-color: var(--accent); }
+  /* build 701: objective banner + dialogue are story-driven (proximity / signals). Force them visible while theming so
+     they can be dragged/sized. The banner is opacity-driven (no display toggle), the dialogue is display-driven. */
+  body.hudPreview:not(.hud-hide-goal) #goalBanner { opacity: 1 !important; pointer-events: auto; cursor: move; outline: 1px dashed rgba(var(--accent-rgb),0.7); outline-offset: 3px; }
+  body.hudPreview:not(.hud-hide-dlg) #dialogue { display: block !important; pointer-events: auto; cursor: move; outline: 1px dashed rgba(var(--accent-rgb),0.7); outline-offset: 3px; }
+  body.hudPreview:not(.hud-hide-goal) #goalBanner:hover, body.hudPreview:not(.hud-hide-dlg) #dialogue:hover { outline-color: var(--accent); }
   #editor #libGrid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; max-height: 132px; overflow-y: auto; }
   #editor button.libChip {
     flex: 0 0 auto; padding: 5px 9px; font-size: 11px; border-radius: 12px;
@@ -222,6 +230,15 @@
   #cpHud .cpFill.red { background:#ff4d5e; } #cpHud .cpFill.blue { background:#3a9bff; }
   #cpMid { font-size:13px; letter-spacing:1px; font-weight:700; color:#9fe6cf; min-width:112px; text-align:center; }
   #grabHint { position:fixed; left:50%; top:58%; transform:translateX(-50%) translate(var(--el-grab-dx,0px),var(--el-grab-dy,0px)) scale(var(--el-grab-s,1)); transform-origin:center; opacity:var(--el-grab-op,1); z-index:8; display:none; color:var(--el-tint,#cfeee2); background:rgba(6,12,15,calc(.55*var(--hud-panel-op,1))); border:1px solid rgba(var(--accent-rgb,120,200,180),.3); border-radius:6px; padding:3px 10px; font:600 12px var(--el-font, ui-monospace), monospace; letter-spacing:1px; pointer-events:none; }
+  /* build 701: the objective banner + NPC dialogue are themeable HUD elements. Their visible opacity is the per-element
+     op times a JS-driven --goal-vis/--dlg-vis (the fade / show), so size, position, tint, font + panel theme all apply. */
+  #goalBanner { position:fixed; left:50%; top:18%; transform:translateX(-50%) translate(var(--el-goal-dx,0px),var(--el-goal-dy,0px)) scale(var(--el-goal-s,1)); transform-origin:center top; z-index:9; max-width:80%; text-align:center; pointer-events:none; opacity:calc(var(--el-goal-op,1) * var(--goal-vis,0)); transition:opacity .4s; color:var(--el-tint,#eafff7); font:600 18px var(--el-font, var(--hud-display-font, var(--ui-font))), ui-monospace, monospace; letter-spacing:.5px; text-shadow:0 2px 14px rgba(0,0,0,.8); background:rgba(6,12,15,calc(.55*var(--hud-panel-op,1))); border:1px solid rgba(var(--accent-rgb,120,200,180),.3); border-radius:9px; padding:9px 18px; }
+  #goalBanner .goalLabel { display:block; margin-bottom:2px; font-size:11px; letter-spacing:2px; color:var(--el-tint, var(--accent,#7fe6cf)); }
+  #goalBanner .goalText { color:inherit; }
+  #dialogue { position:fixed; left:50%; bottom:9%; transform:translateX(-50%) translate(var(--el-dlg-dx,0px),var(--el-dlg-dy,0px)) scale(var(--el-dlg-s,1)); transform-origin:center bottom; z-index:60; width:min(680px,90vw); opacity:var(--el-dlg-op,1); background:rgba(6,12,15,calc(.92*var(--hud-panel-op,1))); border:1px solid rgba(var(--accent-rgb,120,200,180),.4); border-radius:10px; padding:12px 16px 13px; box-shadow:0 8px 30px rgba(0,0,0,.55); cursor:pointer; display:none; font-family:var(--el-font, var(--hud-font, var(--ui-font))), ui-monospace, monospace; }
+  #dialogue .dlgName { color:var(--el-tint, var(--accent)); font-family:var(--el-font, var(--hud-display-font, var(--ui-font))), ui-monospace, monospace; font-size:13px; letter-spacing:1px; margin-bottom:4px; }
+  #dialogue .dlgText { color:var(--el-tint,#eafff7); font-size:15px; line-height:1.5; }
+  #dialogue .dlgMore { color:#6f9385; font-size:10px; text-align:right; margin-top:6px; }
   #radial { position:fixed; inset:0; z-index:30; display:none; background:rgba(4,8,10,.45); }
   #radialRing { position:absolute; inset:0; }
   #radial .radItem { position:absolute; transform:translate(-50%,-50%); width:74px; text-align:center; color:#cfeee2; transition:transform .08s; pointer-events:none; }
@@ -6018,8 +6035,8 @@ applyUiTheme();   // apply saved look immediately on load
 // the global `uiTheme` (a per-PLAYER localStorage preference) — hudCfg is serialized WITH the level so a shared
 // level carries the creator's HUD design. Applied scoped to #hud (vars) + body classes, so it never restyles
 // the editor or menus.
-const HUD_TOGGLES = ['minimap','score','wave','ammo','health','crosshair','killfeed','prompt','grab'];
-const HUD_TOGGLE_LABEL = { minimap:'Minimap', score:'Score', wave:'Wave counter', ammo:'Ammo', health:'Health', crosshair:'Crosshair', killfeed:'Kill feed', prompt:'Interact prompt', grab:'Grab hint' };
+const HUD_TOGGLES = ['minimap','score','wave','ammo','health','crosshair','killfeed','prompt','grab','goal','dlg'];
+const HUD_TOGGLE_LABEL = { minimap:'Minimap', score:'Score', wave:'Wave counter', ammo:'Ammo', health:'Health', crosshair:'Crosshair', killfeed:'Kill feed', prompt:'Interact prompt', grab:'Grab hint', goal:'Objective banner', dlg:'NPC dialogue' };
 const HUD_FONTS = ['Chakra Petch','Major Mono Display','Orbitron','Rajdhani','Press Start 2P','Share Tech Mono','Audiowide','Teko','Exo 2','Saira Condensed','Aldrich','Syncopate','VT323','Michroma','Russo One','Bungee','Space Mono','JetBrains Mono'];
 // build 666: per-element placement/size/tint. Each entry's CSS rule reads --el-<k>-{s,dx,dy}; applyHudCfg sets
 // those vars on #hud, plus an optional per-element accent override directly on the element.
@@ -6032,6 +6049,8 @@ const HUD_ELEMENTS = [
   { k:'crosshair', sel:'#crosshair', label:'Crosshair' },
   { k:'prompt',    sel:'#prompt',    label:'Interact prompt', text:true },   // build 696: "E Activate / Talk / Open…"
   { k:'grab',      sel:'#grabHint',  label:'Grab hint',       text:true },   // build 696: "[G/MMB] Grab / carry"
+  { k:'goal',      sel:'#goalBanner',label:'Objective banner',text:true },   // build 701: the centre "OBJECTIVE" banner
+  { k:'dlg',       sel:'#dialogue',  label:'NPC dialogue',    text:true },   // build 701: the NPC talk box
 ];
 const DEFAULT_HUD = { accent:'#38f5b5', health:'#ff4d6d', score:'#ffd166', uiFont:'Chakra Petch', displayFont:'Major Mono Display', shape:'angular', panelOp:1, border:true, hide:{}, el:{} };
 function _sanitizeHud(h){
@@ -6089,6 +6108,11 @@ function applyHudCfg(){
     }
   }
   const body = document.body; if(!body) return;
+  // build 701: the objective banner, NPC dialogue, interact prompt + grab hint live OUTSIDE #hud, so they don't
+  // inherit #hud's panel-opacity / accent vars. Mirror them onto <body> so those body-level panels theme too.
+  body.style.setProperty('--hud-panel-op', String(c.panelOp));
+  body.style.setProperty('--accent', c.accent);
+  body.style.setProperty('--accent-rgb', _hexToRgbTriplet(c.accent));
   for(const s of ['angular','rounded','square']) body.classList.toggle('hud-shape-'+s, c.shape===s);
   body.classList.toggle('hud-noborder', !c.border);
   for(const k of HUD_TOGGLES) body.classList.toggle('hud-hide-'+k, !!(c.hide && c.hide[k]));
@@ -14533,8 +14557,7 @@ function checkProximity(){
 let _dlg = { open:false, lines:[], i:0, name:'' };
 function _ensureDialogueEl(){
   let el=document.getElementById('dialogue');
-  if(!el){ el=document.createElement('div'); el.id='dialogue';
-    el.style.cssText='position:fixed;left:50%;bottom:9%;transform:translateX(-50%);z-index:60;width:min(680px,90vw);background:rgba(6,12,15,.92);border:1px solid rgba(120,200,180,.4);border-radius:10px;padding:12px 16px 13px;box-shadow:0 8px 30px rgba(0,0,0,.55);cursor:pointer;display:none;';
+  if(!el){ el=document.createElement('div'); el.id='dialogue';   // build 701: styling now lives in CSS so the HUD theme/per-element vars apply
     el.onclick=()=>advanceDialogue();
     document.body.appendChild(el); }
   return el;
@@ -14548,9 +14571,9 @@ function openDialogue(obj){
 function _renderDialogue(){
   const el=_ensureDialogueEl();
   const line=_creditEsc(_dlg.lines[_dlg.i]||'');
-  const nm=_dlg.name ? '<div style="color:var(--accent);font-family:var(--display-font,ui-monospace),monospace;font-size:13px;letter-spacing:1px;margin-bottom:4px;">'+_creditEsc(_dlg.name)+'</div>' : '';
+  const nm=_dlg.name ? '<div class="dlgName">'+_creditEsc(_dlg.name)+'</div>' : '';
   const more=(_dlg.i < _dlg.lines.length-1) ? 'click / E ▸' : 'click / E to close';
-  el.innerHTML=nm+'<div style="color:#eafff7;font-size:15px;line-height:1.5;">'+line+'</div><div style="color:#6f9385;font-size:10px;text-align:right;margin-top:6px;">'+more+'</div>';
+  el.innerHTML=nm+'<div class="dlgText">'+line+'</div><div class="dlgMore">'+more+'</div>';
   el.style.display='block';
 }
 function advanceDialogue(){
@@ -15029,7 +15052,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 700 · 2026-06-25';
+const BUILD_VERSION = 'build 701 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17106,18 +17129,17 @@ function startObjective(){
 let _curGoal = '', _goalBannerT = 0;
 function _ensureGoalBanner(){
   let el=document.getElementById('goalBanner');
-  if(!el){ el=document.createElement('div'); el.id='goalBanner';
-    el.style.cssText='position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:9;max-width:80%;text-align:center;pointer-events:none;opacity:0;transition:opacity .4s;color:#eafff7;font:600 18px var(--display-font,ui-monospace),monospace;letter-spacing:.5px;text-shadow:0 2px 14px rgba(0,0,0,.8);background:rgba(6,12,15,.55);border:1px solid rgba(120,200,180,.3);border-radius:9px;padding:9px 18px;';
+  if(!el){ el=document.createElement('div'); el.id='goalBanner';   // build 701: styling now lives in CSS so the HUD theme/per-element vars apply
     document.body.appendChild(el); }
   return el;
 }
 function showGoalBanner(text){
   text=(text||'').slice(0,160); if(!text) return;
-  const el=_ensureGoalBanner(); el.innerHTML='<span style="color:#7fe6cf;font-size:11px;letter-spacing:2px;display:block;margin-bottom:2px;">OBJECTIVE</span>'+_creditEsc(text);
-  el.style.opacity='1'; _goalBannerT=4.5;
+  const el=_ensureGoalBanner(); el.innerHTML='<span class="goalLabel">OBJECTIVE</span><span class="goalText">'+_creditEsc(text)+'</span>';
+  el.style.setProperty('--goal-vis','1'); _goalBannerT=4.5;   // build 701: --goal-vis drives the fade; per-element opacity multiplies it
 }
 function setGoal(text){ _curGoal=(text||'').slice(0,160); showGoalBanner(_curGoal); if(typeof objectiveHUD==='function') objectiveHUD(); }   // signal hook
-function tickGoalBanner(dt){ if(_goalBannerT>0){ _goalBannerT-=dt; if(_goalBannerT<=0){ const el=document.getElementById('goalBanner'); if(el) el.style.opacity='0'; } } }
+function tickGoalBanner(dt){ if(_goalBannerT>0){ _goalBannerT-=dt; if(_goalBannerT<=0){ const el=document.getElementById('goalBanner'); if(el) el.style.setProperty('--goal-vis','0'); } } }
 function objectiveHUD(){
   const wn=$('waveNum'); if(!wn) return;
   if(objectiveActive()==='survival'){ wn.textContent = 'SURVIVE ' + fmtClock(surviveLeft); }
@@ -19148,7 +19170,13 @@ function applyEditorMode(){
   // the HUD, fill them with sample text; the CSS above force-shows + outlines them so they can be dragged/sized.
   { const pe=document.getElementById('prompt'), ge=document.getElementById('grabHint'), on=(editorMode==='hud');
     if(pe){ if(on){ pe.dataset.hudPreview='1'; pe.innerHTML='<b>E</b> Activate'; } else if(pe.dataset.hudPreview){ delete pe.dataset.hudPreview; pe.innerHTML=''; pe.style.display='none'; } }
-    if(ge){ if(on){ ge.dataset.hudPreview='1'; ge.textContent='[G / MMB] Grab'; } else if(ge.dataset.hudPreview){ delete ge.dataset.hudPreview; ge.textContent=''; ge.style.display='none'; } } }
+    if(ge){ if(on){ ge.dataset.hudPreview='1'; ge.textContent='[G / MMB] Grab'; } else if(ge.dataset.hudPreview){ delete ge.dataset.hudPreview; ge.textContent=''; ge.style.display='none'; } }
+    // build 701: the objective banner + dialogue are story-driven; ensure they EXIST (so _wireHudDrag can grab them) and
+    // fill sample text while theming the HUD. The preview CSS force-shows them; reset on exit so they don't linger.
+    const gb=(on && typeof _ensureGoalBanner==='function')?_ensureGoalBanner():document.getElementById('goalBanner');
+    const db=(on && typeof _ensureDialogueEl==='function')?_ensureDialogueEl():document.getElementById('dialogue');
+    if(gb){ if(on){ gb.dataset.hudPreview='1'; gb.innerHTML='<span class="goalLabel">OBJECTIVE</span><span class="goalText">Restore Water, Light, and Soil.</span>'; } else if(gb.dataset.hudPreview){ delete gb.dataset.hudPreview; gb.innerHTML=''; gb.style.setProperty('--goal-vis','0'); } }
+    if(db){ if(on){ db.dataset.hudPreview='1'; db.innerHTML='<div class="dlgName">Mr. Spikey</div><div class="dlgText">The garden is dying… you have to help.</div><div class="dlgMore">click / E ▸</div>'; } else if(db.dataset.hudPreview){ delete db.dataset.hudPreview; db.innerHTML=''; db.style.display='none'; } } }
 
   editorEl.querySelectorAll('#edModes .edMode').forEach(b=>{
     const c = MODE_COLOR[b.dataset.mode] || 'var(--accent)', on = b.dataset.mode===editorMode;
@@ -19806,11 +19834,12 @@ function renderHudPanel(){
 }
 // build 668: drag-to-position. Each HUD element gets a pointer handler (wired once) that only acts while the HUD
 // editor mode is showing (.hudPreview). Dragging writes that element's dx/dy live; the panel refreshes on release.
-let _hudDragWired = false;
 function _wireHudDrag(){
-  if(_hudDragWired) return; _hudDragWired = true;
+  // build 701: wire per-element (not one-shot). The objective banner + dialogue are created lazily, so they may not
+  // exist on the first call (level load); each call wires any newly-present element, skipping ones already wired.
   for(const e of HUD_ELEMENTS){
-    const dom = document.querySelector(e.sel); if(!dom) continue;
+    const dom = document.querySelector(e.sel); if(!dom || dom.dataset.hudDragWired) continue;
+    dom.dataset.hudDragWired = '1';
     let drag=null;
     dom.addEventListener('pointerdown', (ev)=>{
       if(!document.body.classList.contains('hudPreview')) return;   // only while theming the HUD

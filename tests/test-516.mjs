@@ -7,8 +7,8 @@ const src = gameSource();
 assert(/body\.hudPreview #hud #stats, body\.hudPreview #hud #ammoPanel, body\.hudPreview #hud #score,[\s\S]*?pointer-events: auto; cursor: move; outline: 1px dashed/.test(html), 'HUD elements are draggable + outlined in HUD preview');
 
 // --- the drag wiring ---
-assert(/let _hudDragWired = false;/.test(src), 'drag is wired once');
 const wd = extractFunction('_wireHudDrag');
+assert(/dom\.dataset\.hudDragWired/.test(wd), 'each element is wired once (per-element guard, build 701: lazy goalBanner/dialogue may not exist on the first pass)');
 assert(/for\(const e of HUD_ELEMENTS\)\{[\s\S]*?dom\.addEventListener\('pointerdown'/.test(wd), 'each HUD element gets a pointerdown handler');
 assert(/if\(!document\.body\.classList\.contains\('hudPreview'\)\) return;/.test(wd), 'dragging only acts while the HUD editor mode is showing');
 assert(/drag = \{ x:ev\.clientX, y:ev\.clientY, dx:o\.dx\|\|0, dy:o\.dy\|\|0 \};/.test(wd), 'drag captures the start offset');
