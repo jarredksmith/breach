@@ -15058,7 +15058,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 704 · 2026-06-25';
+const BUILD_VERSION = 'build 705 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -20962,16 +20962,20 @@ function renderInvItems(host){
       form.appendChild(sgWrap);
     }
     if((it.useType||'none')!=='none'){ const cw=document.createElement('label'); cw.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;color:#cfeee2;margin:2px 0 6px;cursor:pointer;'; const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=it.useConsume!==false; cb.onchange=()=>{ it.useConsume=cb.checked; }; cw.appendChild(cb); cw.appendChild(document.createTextNode('Consumed on use')); form.appendChild(cw); }
-    if((it.type||'object')==='journal'){
+    const _isJournal = (it.type||'object')==='journal';
+    if(_isJournal){
       const jT=document.createElement('textarea'); jT.value=it.journal||''; jT.rows=6; jT.style.cssText=IST+'resize:vertical;font-family:Georgia,serif;'; jT.oninput=()=>{ it.journal=jT.value; }; field('Journal text (the page contents)', jT);
-    } else {
+    }
+    // build 705: the model + scale + search apply to BOTH item types — a journal/note can carry its own world model
+    // (its pickup pad + a "place" drop use it). Reading a journal still shows the page above; the model is just the look.
+    {
       const urlRow=document.createElement('div'); urlRow.style.cssText='display:flex;gap:6px;';
-      const urlI=document.createElement('input'); urlI.type='text'; urlI.value=it.model||''; urlI.placeholder='https://\u2026/item.glb (blank = default crystal)'; urlI.style.cssText=IST;
+      const urlI=document.createElement('input'); urlI.type='text'; urlI.value=it.model||''; urlI.placeholder='https://\u2026/item.glb (blank = default icon)'; urlI.style.cssText=IST;
       const setB=document.createElement('button'); setB.textContent='Set'; setB.style.flex='0 0 auto'; setB.onclick=()=>{ pushUndoSnapshot(); it.model=urlI.value.trim(); it.thumb=''; renderInvItems(host); };
       const clrB=document.createElement('button'); clrB.textContent='Clear'; clrB.style.flex='0 0 auto'; clrB.onclick=()=>{ pushUndoSnapshot(); it.model=''; it.thumb=''; renderInvItems(host); };
       urlRow.appendChild(urlI); urlRow.appendChild(setB); urlRow.appendChild(clrB); field('Model URL', urlRow);
       const scI=document.createElement('input'); scI.type='number'; scI.min='0.05'; scI.max='20'; scI.step='0.05'; scI.value=it.scale||1; scI.style.cssText=IST; scI.onchange=()=>{ it.scale=Math.max(0.05,Math.min(20,parseFloat(scI.value)||1)); }; field('Model scale', scI);
-      hint(form, 'Sets the in-world size when a “place” item is dropped: 1 ≈ 2m across, 2 ≈ double, 0.5 ≈ half. (The inventory preview always fits the card.)', '-2px 0 6px');
+      hint(form, _isJournal ? 'How this note looks as a world pickup (and if you make it a “place” item). Reading it still shows the page above; blank = a default icon.' : 'Sets the in-world size when a “place” item is dropped: 1 ≈ 2m across, 2 ≈ double, 0.5 ≈ half. (The inventory preview always fits the card.)', '-2px 0 6px');
       const psTog=document.createElement('button'); psTog.textContent='\ud83d\udd0d Search models'; psTog.style.cssText='font-size:10px;padding:2px 8px;margin:2px 0 4px;';
       const psHost=document.createElement('div'); psHost.style.display='none'; let _b=false;
       psTog.onclick=()=>{ const show=(psHost.style.display==='none'); psHost.style.display=show?'':'none'; psTog.textContent=show?'\u2715 Close search':'\ud83d\udd0d Search models';
