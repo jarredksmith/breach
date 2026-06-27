@@ -7,7 +7,7 @@ const src = gameSource();
 // --- the single-signal applier was factored out and is shared ---
 assert(/function _applySignalAction\(s\)\{/.test(src), '_applySignalAction exists');
 const fs = extractFunction('fireSignals');
-assert(/if\(s\.when !== when\) continue;\s*\n?\s*_applySignalAction\(s\);/.test(fs), 'fireSignals delegates to _applySignalAction');
+assert(/if\(s\.when !== when\) continue;/.test(fs) && /_applySignalAction\(s\);/.test(fs), 'fireSignals checks the when + delegates to _applySignalAction');
 
 // --- contact detection ---
 const cp = extractFunction('_contactObjectPresent');
