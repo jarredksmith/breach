@@ -10046,7 +10046,12 @@ let pickupMarkers = [];
 function _applyPickupXform(obj, sp){ if(!obj||!sp) return; obj.position.set(sp.x, _maxTerrainOver(sp.x,sp.z,1.2)+(+sp.y||0), sp.z); obj.rotation.set((+sp.rx||0)*RAD, (+sp.ry||0)*RAD, (+sp.rz||0)*RAD); obj.scale.setScalar((sp.scale!=null && +sp.scale>0)?+sp.scale:1); }
 function refreshPickupMarkers(){ for(const m of pickupMarkers){ scene.remove(m); } pickupMarkers.length=0;
   if(typeof pickupsOn!=='undefined' && !pickupsOn) return;   // pickups disabled: no editor markers
-  for(const sp of pickupSpots){ const g=buildPowerupMesh(sp.kind, sp.item); _applyPickupXform(g, sp); g.visible=!!(typeof editorOpen!=='undefined'&&editorOpen); g.userData.pickupMarker=true; scene.add(g); pickupMarkers.push(g); } }
+  for(const sp of pickupSpots){ const g=buildPowerupMesh(sp.kind, sp.item);
+    // build 704: the floating item/weapon model has raycast disabled (so shots pass through it in-game), and the base
+    // disc can be toggled off — either way it could be unclickable. Add an invisible, raycastable hitbox covering the
+    // whole pickup so it's always click-selectable in the editor. (Markers are editor-only; live powerups don't get this.)
+    const hit=new THREE.Mesh(new THREE.CylinderGeometry(1.05,1.05,2.6,10), new THREE.MeshBasicMaterial({ visible:false })); hit.position.y=1.05; hit.userData.pickHit=true; g.add(hit);
+    _applyPickupXform(g, sp); g.visible=!!(typeof editorOpen!=='undefined'&&editorOpen); g.userData.pickupMarker=true; scene.add(g); pickupMarkers.push(g); } }
 function setPickupMarkersVisible(v){ for(const m of pickupMarkers) m.visible=v; }
 // ---- Placed loot-box editor markers (mirror of pickup markers) ----
 let lootMarkers = [];
@@ -15053,7 +15058,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 703 · 2026-06-25';
+const BUILD_VERSION = 'build 704 · 2026-06-25';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -20808,18 +20813,24 @@ function _newInvId(){ let i=1; while(invCatalog['item_'+i]) i++; return 'item_'+
 // marker directly (cheap) instead of rebuilding every pickup; X/Z commit through the marker refresh.
 function _pickupXformPanel(host, sp, i){
   const panel=document.createElement('div'); panel.style.cssText='margin:1px 0 7px 18px;padding:7px 9px;border-left:2px solid #2a3a42;display:grid;grid-template-columns:auto 1fr auto;gap:4px 8px;align-items:center;';
-  const dec=(st)=> st<1?2:0;
-  const num=(label, get, mn, mx, st, set)=>{ const l=document.createElement('span'); l.textContent=label; l.style.cssText='font-size:11px;color:#9fe6cf;';
+  const dec=(st)=> st<0.1?2:(st<1?2:0);
+  // build 704: the value readout is now an editable number box (type a precise value or nudge with the arrows),
+  // with its own fine step (nstep) independent of the slider \u2014 so e.g. height can be set to 0.01 precision.
+  const num=(label, get, mn, mx, st, set, nstep)=>{ const fine=(nstep!=null?nstep:st);
+    const l=document.createElement('span'); l.textContent=label; l.style.cssText='font-size:11px;color:#9fe6cf;';
     const inp=document.createElement('input'); inp.type='range'; inp.min=mn; inp.max=mx; inp.step=st; inp.value=get(); inp.style.accentColor='var(--accent)';
-    const v=document.createElement('span'); v.textContent=(+get()).toFixed(dec(st)); v.style.cssText='font-size:10px;color:#cfeee2;min-width:42px;text-align:right;';
+    const v=document.createElement('input'); v.type='number'; v.min=mn; v.max=mx; v.step=fine; v.value=(+get()).toFixed(dec(fine)); v.style.cssText='width:58px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:11px;text-align:right;';
+    const apply=(val, fromBox)=>{ val=Math.max(mn, Math.min(mx, val)); set(val); if(pickupMarkers[i]) _applyPickupXform(pickupMarkers[i], sp); if(fromBox) inp.value=val; else v.value=(+val).toFixed(dec(fine)); };
     inp.onpointerdown=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); };
-    inp.oninput=()=>{ set(+inp.value); v.textContent=(+inp.value).toFixed(dec(st)); if(pickupMarkers[i]) _applyPickupXform(pickupMarkers[i], sp); };
+    inp.oninput=()=>apply(+inp.value, false);
+    v.onfocus=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); };
+    v.onchange=()=>apply(parseFloat(v.value)||0, true);
     panel.appendChild(l); panel.appendChild(inp); panel.appendChild(v); };
-  num('Height (Y)', ()=>(+sp.y||0), -10, 20, 0.1, v=>sp.y=v);
-  num('Rotate X\u00b0', ()=>(+sp.rx||0), -180, 180, 1, v=>sp.rx=v);
-  num('Rotate Y\u00b0', ()=>(+sp.ry||0), -180, 180, 1, v=>sp.ry=v);
-  num('Rotate Z\u00b0', ()=>(+sp.rz||0), -180, 180, 1, v=>sp.rz=v);
-  num('Scale', ()=>(sp.scale!=null?+sp.scale:1), 0.1, 8, 0.05, v=>sp.scale=v);
+  num('Height (Y)', ()=>(+sp.y||0), -10, 20, 0.1, v=>sp.y=v, 0.01);
+  num('Rotate X\u00b0', ()=>(+sp.rx||0), -180, 180, 1, v=>sp.rx=v, 1);
+  num('Rotate Y\u00b0', ()=>(+sp.ry||0), -180, 180, 1, v=>sp.ry=v, 1);
+  num('Rotate Z\u00b0', ()=>(+sp.rz||0), -180, 180, 1, v=>sp.rz=v, 1);
+  num('Scale', ()=>(sp.scale!=null?+sp.scale:1), 0.1, 8, 0.05, v=>sp.scale=v, 0.01);
   const xzRow=document.createElement('div'); xzRow.style.cssText='grid-column:1/4;display:flex;gap:8px;align-items:center;margin-top:2px;';
   const mkXZ=(label, get, set)=>{ const l=document.createElement('span'); l.textContent=label; l.style.cssText='font-size:11px;color:#9fe6cf;'; const inp=document.createElement('input'); inp.type='number'; inp.step='0.1'; inp.value=(+get()).toFixed(2); inp.style.cssText='width:66px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:11px;'; inp.onchange=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); set(+inp.value||0); if(typeof refreshPickupMarkers==='function') refreshPickupMarkers(); renderEditorFields(); }; xzRow.appendChild(l); xzRow.appendChild(inp); };
   mkXZ('X', ()=>sp.x, v=>sp.x=v); mkXZ('Z', ()=>sp.z, v=>sp.z=v);
@@ -23446,7 +23457,9 @@ renderer.domElement.addEventListener('click', (e)=>{
     root = root.parent;
   }
   if(picked && picked!=='pickups') selPickup = -1;   // selecting anything else releases a grabbed pickup
-  if(picked==='pickups'){ selProps.length=0; selLights.length=0; selSpawns=[]; gizmoMode='translate'; if(typeof renderEditorFields==='function') renderEditorFields(); updateSelectionHighlight(); }
+  if(picked==='pickups'){ selProps.length=0; selLights.length=0; selSpawns=[]; selLoot=-1; gizmoMode='translate'; editorActive='pickups';
+    if(typeof setEditorMode==='function' && editorMode!=='rules') setEditorMode('rules', true);   // build 704: jump to the Gameplay tab so the Pickups section (with its transform controls) is in view
+    if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
   else if(picked==='loot'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; gizmoMode='translate'; if(typeof refreshLootMarkers==='function') refreshLootMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); updateSelectionHighlight(); }
   else if(picked==='deathzones'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='deathzones'; if(typeof revealZoneTool==='function') revealZoneTool('deathzones'); if(typeof refreshDeathZoneMarkers==='function') refreshDeathZoneMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
   else if(picked==='jumppads'){ selProps.length=0; selLights.length=0; selSpawns=[]; selPickup=-1; selLoot=-1; gizmoMode='translate'; editorActive='jumppads'; if(typeof revealZoneTool==='function') revealZoneTool('jumppads'); if(typeof refreshJumpPadMarkers==='function') refreshJumpPadMarkers(); if(typeof renderEditorFields==='function') renderEditorFields(); if(typeof updateGizmo==='function') updateGizmo(); updateSelectionHighlight(); }
