@@ -197,4 +197,10 @@ assert(/o\.userData\.leanRoll=0; o\.userData\.leanPitch=0; o\.userData\._prevSpe
   const pitchAccel=clamp(18*0.006, 0.1), pitchBrake=clamp(-30*0.006, 0.1);
   assert(pitchAccel>0 && pitchBrake<0, 'power squats (nose up, +) and braking dives (nose down, -)'); }
 
-done('build 709-729: drivable vehicles — drive / collision / ramps+openings / boost / facing / pivot / cam+ride / shove / anti-launch / A·D + drift / tilt + handbrake / long-ramp / suspension lean');
+// --- build 730: speed-sensitive FOV + camera shake on the chase cam ---
+assert(/const _baseFov=\(typeof worldCfg!=='undefined'&&worldCfg\.fov\)\?worldCfg\.fov:78, _fovT=_baseFov \+ _sf\*12 \+ _bst\*9;/.test(src), 'FOV target widens with speed fraction + a boost kick');
+assert(/camera\.fov \+= \(_fovT-camera\.fov\)\*Math\.min\(1,dt\*4\); camera\.updateProjectionMatrix\(\);/.test(src), 'FOV eases toward the target each frame');
+assert(/if\(_shk>0\.0006\)\{ camera\.rotation\.x \+= \(Math\.random\(\)-0\.5\)\*_shk; camera\.rotation\.y \+= \(Math\.random\(\)-0\.5\)\*_shk; \}/.test(src), 'a faint shake scales with speed/boost');
+assert(/camera\.fov=worldCfg\.fov; camera\.updateProjectionMatrix\(\); \}   \/\/ build 730: restore the normal FOV/.test(extractFunction('exitCar')), 'exiting restores the normal FOV');
+
+done('build 709-730: drivable vehicles — … / suspension lean / speed-FOV + shake');

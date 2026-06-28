@@ -14618,6 +14618,7 @@ function exitCar(){
   player.pos.set(o.position.x+side.x*2.2, (o.position.y||0)+EYE, o.position.z+side.z*2.2);
   player.vel.set(0,0,0); player.onGround=true;
   if(_carReturn){ player.yaw=_carReturn.yaw; player.pitch=_carReturn.pitch; }
+  if(typeof worldCfg!=='undefined' && worldCfg.fov && typeof camera!=='undefined'){ camera.fov=worldCfg.fov; camera.updateProjectionMatrix(); }   // build 730: restore the normal FOV after the speed-FOV
   if(SFX.swap) SFX.swap();
 }
 function _carGroundY(x,z,exclude){
@@ -15419,7 +15420,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 729 · 2026-06-28';
+const BUILD_VERSION = 'build 730 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18626,6 +18627,12 @@ function loop(){
     const _ch=Math.max(1.2, _ex.hh*1.8 + 1.5 + (+_vv.camHigh||0));
     camera.position.set(_tx - fx*_cd, o.position.y + _ch, _tz - fz*_cd);
     camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=-0.28; camera.rotation.z=0;
+    // build 730: sense of speed — the FOV eases wider with speed (and a kick on boost), plus a faint shake at pace
+    const _spd=Math.abs(o.userData.carSpeed||0), _msp=Math.max(1,+_vv.maxSpeed||16), _sf=Math.min(1,_spd/_msp), _bst=(o.userData.boostT>0)?1:0;
+    const _baseFov=(typeof worldCfg!=='undefined'&&worldCfg.fov)?worldCfg.fov:78, _fovT=_baseFov + _sf*12 + _bst*9;
+    camera.fov += (_fovT-camera.fov)*Math.min(1,dt*4); camera.updateProjectionMatrix();
+    const _shk=_sf*0.0045 + _bst*0.006;
+    if(_shk>0.0006){ camera.rotation.x += (Math.random()-0.5)*_shk; camera.rotation.y += (Math.random()-0.5)*_shk; }
   } else if(editorOpen && editorTopView){
     // locked orthographic straight-down view; pan with drag, zoom with wheel
     scene.fog = null;   // fog would wash out the whole overhead view
