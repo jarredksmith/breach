@@ -50,6 +50,10 @@ const cw = extractFunction('_carWall');
 assert(/if\(!physWorld \|\| !RAPIER \|\| !RAPIER\.Ray \|\| typeof physWorld\.castRay!=='function'\) return false;/.test(cw), 'collision degrades to none if Rapier is unavailable');
 assert(/new RAPIER\.Ray\(\{x:ox, y, z:oz\}, \{x:dx, y:0, z:dz\}\)/.test(cw) && /physWorld\.castRay\(ray, dist\+0\.12, true\)/.test(cw), 'casts forward rays against the world');
 assert(/\}\s*catch\(e\)\{ return false; \}/.test(cw), 'a cast error never breaks driving');
+// build 716: ramps work — only block when what's ahead is too tall to drive up (a wall), not a climbable ramp/step
+assert(/const MAX_RISE = Math\.max\(0\.9, half\.hh\);/.test(cw), 'a max climbable rise is defined');
+assert(/const gy = _carGroundY\(ox \+ dx\*\(toi\+0\.15\), oz \+ dz\*\(toi\+0\.15\), o\);/.test(cw), 'it samples the surface height just past the hit');
+assert(/if\(gy - baseY > MAX_RISE\) return true;/.test(cw), 'only a too-tall obstacle (a wall) blocks; a ramp is climbed');
 assert(/if\(drivingCar\)\{ drivingCar=null; _carReturn=null; \}/.test(extractFunction('startGame')), 'never start a round still driving');
 assert(/if\(o\.userData && o\.userData\.vehicle\) return;/.test(extractFunction('addStaticColliderFor')), 'a vehicle gets no static collider (it is moved kinematically)');
 
