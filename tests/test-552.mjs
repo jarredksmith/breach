@@ -132,10 +132,20 @@ assert(/if\(dynamicProps\.length && !skipDynamic\)\{/.test(st), 'skipDynamic dro
 assert(/const s=surfaceTopAt\(x,z,exclude,true\);/.test(extractFunction('_carGroundY')), 'the car ground query skips dynamic props (so it never rides up + launches off a barrel)');
 const sh = extractFunction('_carShoveDynamics');
 assert(/const b = p\.userData && p\.userData\.phys && p\.userData\.phys\.body; if\(!b\) continue;/.test(sh), 'only dynamic props with a physics body are shoved');
-assert(/if\(sp < 1\.2\) return;/.test(sh), 'a near-stopped car does not shove (so it can rest against props)');
-assert(/if\(dx\*tx \+ dz\*tz < -0\.3\) continue;/.test(sh), 'props behind the travel direction are not dragged');
+assert(/if\(sp < 1\.2\) return 0;/.test(sh), 'a near-stopped car does not shove (so it can rest against props)');
+assert(/const ahead=dx\*tx \+ dz\*tz; if\(ahead < -0\.3\) continue;/.test(sh), 'props behind the travel direction are not dragged');
 assert(/pushDynamic\(p, _carShoveDir, sp\*m\*14\*dt, p\.position\)/.test(sh), 'shove impulse scales with speed * mass (heavier/faster = bigger launch)');
-assert(/if\(typeof NET==='undefined' \|\| NET\.mode!=='client'\)\{ const _sgn=Math\.sign\(r\.speed\)\|\|1; _carShoveDynamics\(o, r\.speed, fx\*_sgn, fz\*_sgn, _h, dt\); \}/.test(du), 'the host/solo shoves dynamic props each frame along the travel direction');
+assert(/if\(typeof NET==='undefined' \|\| NET\.mode!=='client'\)\{ const _sgn=Math\.sign\(r\.speed\)\|\|1; const _react=_carShoveDynamics\(o, r\.speed, fx\*_sgn, fz\*_sgn, _h, dt\);/.test(du), 'the host/solo shoves dynamic props each frame along the travel direction');
+
+// --- build 734: Newton's 3rd law — a heavy prop shoves the car back (mass matters both ways) ---
+assert(/reaction \+= m \* Math\.max\(0, nx\*tx \+ nz\*tz\);/.test(sh) && /return reaction;/.test(sh), 'the shove accumulates a mass-weighted, head-on reaction and returns it');
+assert(/if\(_react>0\)\{ const CARM=8, _slow=Math\.min\(0\.55, \(_react\/CARM\)\*dt\*3\); o\.userData\.carSpeed\*=\(1-_slow\); r\.speed\*=\(1-_slow\); if\(_react>20 && \(o\.userData\._hitCd\|\|0\)<=0\)\{ o\.userData\._hitCd=0\.3; _carImpactFx\(o, Math\.min\(14,_react\*0\.4\)\); \} \}/.test(du), 'a heavy prop slows the car (and jolts it if very heavy); a light barrel barely registers');
+
+// executable: reaction scales with mass — a heavy crate bites, a barrel barely does
+{ const react=(m)=>m*1;   // head-on (nx*tx+nz*tz = 1)
+  const slow=(r)=>Math.min(0.55, (r/8)*(1/60)*3);
+  assert(slow(react(50)) > slow(react(1)), 'a 50kg crate slows the car far more than a 1kg barrel');
+  assert(slow(react(1)) < 0.02, 'a light barrel barely slows the car'); }
 
 // executable: the shove direction points roughly along travel and away from the car, never backward into it
 { const shove = new Function('dynamicProps','heldProp','pushDynamic',
@@ -211,4 +221,4 @@ assert(/for\(let i=0;i<4;i\+\+\) _spawnDust\(nx, o\.position\.y\+0\.3, nz/.test(
 assert(/o\.userData\.hitShake=_hs\*\(1-Math\.min\(1,dt\*5\)\);/.test(src), 'the impact jolt decays in the chase cam');
 assert(/o\.userData\.hitShake=0; o\.userData\._hitCd=0;/.test(extractFunction('enterCar')), 'impact state resets on enter');
 
-done('build 709-733: drivable vehicles — … / suspension lean / speed-FOV+shake / impact feedback');
+done('build 709-734: drivable vehicles — … / suspension lean / speed-FOV+shake / impact feedback / heavy-prop push-back');
