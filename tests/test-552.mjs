@@ -34,7 +34,7 @@ assert(/if\(drivingCar\)\{ exitCar\(\); return; \}/.test(extractFunction('intera
 assert(/nearTarget\.type==='vehicle'\)\{\s*enterCar\(nearTarget\.obj\);/.test(extractFunction('interact')), 'E on a vehicle gets you in');
 assert(/if\(drivingCar\)\{ wish\.set\(0,0,0\); moveScale=0; \}/.test(src), 'foot movement is frozen while driving');
 assert(/if\(drivingCar\) driveUpdate\(dt\);/.test(src), 'driveUpdate runs each frame while driving');
-assert(/\} else if\(drivingCar\)\{[\s\S]*?const o=drivingCar, yaw=player\.yaw[\s\S]*?camera\.position\.set\(o\.position\.x - fx\*6\.5/.test(src), 'a chase camera orbits with the look (player.yaw)');
+assert(/\} else if\(drivingCar\)\{[\s\S]*?const o=drivingCar, yaw=player\.yaw[\s\S]*?camera\.position\.set\(_tx - fx\*6\.5/.test(src), 'a chase camera orbits with the look (player.yaw)');
 
 // --- build 711: mouse-orbit steering — the car turns toward where you look (player.yaw), not A/D ---
 const du = extractFunction('driveUpdate');
@@ -68,7 +68,7 @@ assert(/_vy=\(_climb>0\.8\)\?Math\.min\(_climb,14\):0;/.test(src), 'climbing a r
 assert(/_carEuler\.set\(o\.userData\.carPitch, carYaw, o\.userData\.carRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface in the travel frame (no clip-through)');
 
 // --- serialize + restore (compact veh) at all three prop-load sites ---
-assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; if\(V\.units==='mph'\) e\.veh\.units='mph'; if\(V\.boost>1\.01\)\{ e\.veh\.boost=V\.boost; e\.veh\.boostDur=V\.boostDur; e\.veh\.boostCd=V\.boostCd; \} if\(V\.modelYaw\) e\.veh\.modelYaw=V\.modelYaw; \}/.test(src), 'vehicle (+ units + boost + model facing) serialized');
+assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; if\(V\.units==='mph'\) e\.veh\.units='mph'; if\(V\.boost>1\.01\)\{ e\.veh\.boost=V\.boost; e\.veh\.boostDur=V\.boostDur; e\.veh\.boostCd=V\.boostCd; \} if\(V\.modelYaw\) e\.veh\.modelYaw=V\.modelYaw; if\(V\.pivot\) e\.veh\.pivot=V\.pivot; \}/.test(src), 'vehicle (+ units + boost + model facing + pivot) serialized');
 eq(src.split('if(p.veh) vehicleApply(obj, p.veh);').length - 1, 3, 'vehicle restored at all three prop-load sites');
 
 // --- editor fold ---
@@ -94,4 +94,23 @@ assert(/const carYaw=o\.userData\.carYaw, fx=-Math\.sin\(carYaw\), fz=-Math\.cos
 assert(/_carModelQ\.setFromAxisAngle\(_UP_Y, -\(cfg\.modelYaw\|\|0\)\*RAD\);/.test(du), 'the mesh is spun by -modelYaw so the nose lines up with travel');
 assert(/row\('Model facing \(°\)','modelYaw', -180, 180, 1, 1\)/.test(src), 'editor exposes a Model facing slider');
 
-done('build 709-720: drivable vehicles — drive / collision / ramps / units / boost / forward arrow / model facing');
+// --- build 721: turn pivot — rotate around a forward offset (the centre/front) instead of the mesh origin ---
+assert(/pivot:\+v\.pivot\|\|0/.test(extractFunction('vehicleApply')), 'vehicleApply stores a pivot offset');
+// during a yaw change the origin shifts by (fwdOld - fwdNew)*pivot so the pivot point stays put
+assert(/const _pv=\+cfg\.pivot\|\|0;/.test(du) && /o\.position\.x \+= \(Math\.sin\(_yn\) - Math\.sin\(_yawOld\)\)\*_pv;/.test(du) && /o\.position\.z \+= \(Math\.cos\(_yn\) - Math\.cos\(_yawOld\)\)\*_pv;/.test(du), 'the turn pivots around the forward offset, not the origin');
+assert(/player\.pos\.set\(o\.position\.x \+ fx\*_pv, o\.position\.y\+EYE, o\.position\.z \+ fz\*_pv\)/.test(du), 'the rider sits at the pivot (centre), not the tail');
+assert(/if\(V\.pivot\) e\.veh\.pivot=V\.pivot;/.test(src), 'pivot is serialized');
+assert(/row\('Pivot \(m\)','pivot', -12, 12, 0\.1, 1\)/.test(src) && /Center pivot on model/.test(src), 'editor exposes a Pivot slider + a Center-pivot helper');
+const sva = extractFunction('_setVehArrow');
+assert(/pd\.position\.copy\(o\.position\)\.addScaledVector\(_vaFwd, pv\);/.test(sva), 'a pivot marker is drawn at origin + nose*pivot');
+
+// --- the turn-pivot math: rotating about a point pivot metres ahead keeps that point fixed ---
+{ const pv=3, y0=0, y1=0.4;   // a 0.4 rad step
+  const f0x=-Math.sin(y0), f0z=-Math.cos(y0), f1x=-Math.sin(y1), f1z=-Math.cos(y1);
+  let ox=0, oz=0;                      // origin starts at world 0
+  const Px=ox+f0x*pv, Pz=oz+f0z*pv;   // pivot point before the turn
+  ox += (Math.sin(y1)-Math.sin(y0))*pv; oz += (Math.cos(y1)-Math.cos(y0))*pv;   // the build-721 correction
+  const Px2=ox+f1x*pv, Pz2=oz+f1z*pv; // pivot point after the turn
+  near(Px2, Px, 1e-9, 'pivot X is unmoved by the turn'); near(Pz2, Pz, 1e-9, 'pivot Z is unmoved by the turn'); }
+
+done('build 709-721: drivable vehicles — drive / collision / ramps / units / boost / forward arrow / model facing / turn pivot');

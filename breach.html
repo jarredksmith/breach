@@ -14507,7 +14507,7 @@ function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   maxSpeed:Math.max(2, +v.maxSpeed||16), accel:Math.max(1, +v.accel||18),
   turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph'),
   boost:Math.max(1, Math.min(4, +v.boost||1)), boostDur:Math.max(0.5, +v.boostDur||3), boostCd:Math.max(0, +v.boostCd||5),
-  modelYaw:+v.modelYaw||0 }; }   // build 719: hold Shift to boost; build 720: modelYaw (deg) aligns the model's nose to the drive direction
+  modelYaw:+v.modelYaw||0, pivot:+v.pivot||0 }; }   // build 719: boost; 720: modelYaw aligns nose to drive dir; 721: pivot (m toward nose) = turn centre
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14639,7 +14639,15 @@ function driveUpdate(dt){
   if(o.userData.carYaw==null) o.userData.carYaw = o.rotation.y + (cfg.modelYaw||0)*RAD;
   let diff = player.yaw - o.userData.carYaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // shortest angle to the look heading
   const maxStep = (cfg.turn*Math.PI/180) * speedFrac * dt;
+  const _yawOld = o.userData.carYaw;
   o.userData.carYaw += Math.max(-maxStep, Math.min(maxStep, diff));
+  // build 721: pivot the turn around a point cfg.pivot metres toward the nose (not the mesh origin), so a model whose origin
+  // sits at the tail still swings around its middle/front. Shift the origin so that pivot point holds still as the yaw changes.
+  const _pv=+cfg.pivot||0;
+  if(_pv){ const _yn=o.userData.carYaw;
+    o.position.x += (Math.sin(_yn) - Math.sin(_yawOld))*_pv;   // (fwdOld - fwdNew)·pivot, fwd = (-sin,-cos)
+    o.position.z += (Math.cos(_yn) - Math.cos(_yawOld))*_pv;
+  }
   // build 712 (Phase 2): wall collision — block each axis of the intended move if a wall is within reach, so the car
   // slides along walls instead of driving through them. Self-contained ray-casts; degrades to no-collision if Rapier
   // is unavailable. (Footprint is approximate; a full swept-body collider can come later.)
@@ -14675,7 +14683,7 @@ function driveUpdate(dt){
   _carModelQ.setFromAxisAngle(_UP_Y, -(cfg.modelYaw||0)*RAD);
   o.quaternion.copy(_carQuat).multiply(_carModelQ);
   o.updateMatrixWorld(true);
-  player.pos.set(o.position.x, o.position.y+EYE, o.position.z); player.vel.set(0,0,0); player.onGround=true;   // ride along; player.yaw stays free for the mouse to steer
+  player.pos.set(o.position.x + fx*_pv, o.position.y+EYE, o.position.z + fz*_pv); player.vel.set(0,0,0); player.onGround=true;   // build 721: ride at the pivot (centre); player.yaw stays free for the mouse to steer
   _engUpdate(r.speed, throttle);   // build 715: engine pitch/volume + speed HUD
   { const U=_SPEED_UNIT[cfg.units]||_SPEED_UNIT.kph;   // build 718: km/h or mph
     const v=document.getElementById('dhVal'); if(v) v.textContent=Math.round(Math.abs(r.speed)*U.f);
@@ -15294,7 +15302,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 720 · 2026-06-28';
+const BUILD_VERSION = 'build 721 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18494,7 +18502,9 @@ function loop(){
     if(editorBrightLight.intensity !== 0) editorBrightLight.intensity = 0;
     gun.visible=false;
     const o=drivingCar, yaw=player.yaw, fx=-Math.sin(yaw), fz=-Math.cos(yaw);   // build 711: orbit with the mouse (player.yaw), the car steers to follow
-    camera.position.set(o.position.x - fx*6.5, o.position.y + 3.4, o.position.z - fz*6.5);
+    const _pv=(o.userData.vehicle&&+o.userData.vehicle.pivot)||0, _cy=(o.userData.carYaw!=null?o.userData.carYaw:o.rotation.y);   // build 721: orbit the pivot/centre, not the mesh origin
+    const _tx=o.position.x - Math.sin(_cy)*_pv, _tz=o.position.z - Math.cos(_cy)*_pv;
+    camera.position.set(_tx - fx*6.5, o.position.y + 3.4, _tz - fz*6.5);
     camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=-0.28; camera.rotation.z=0;
   } else if(editorOpen && editorTopView){
     // locked orthographic straight-down view; pan with drag, zoom with wheel
@@ -19807,7 +19817,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; }   // build 709/718/719/720: drivable vehicle + units + boost + model facing
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; }   // build 709/718/719/720/721: drivable vehicle + units + boost + model facing + pivot
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22492,6 +22502,13 @@ function renderEditorFields(){
           row('Reverse ('+U.l+')','reverse', 2, 120, 1, U.f);
           { const mh=document.createElement('div'); mh.className='hint'; mh.style.margin='8px 0 1px'; mh.innerHTML='<b>Model facing</b> — rotate until the green arrow points out the <b>front</b> of your model. Drives nose-first; doesn’t move the prop.'; vBody.appendChild(mh); }
           row('Model facing (°)','modelYaw', -180, 180, 1, 1);
+          { const ph=document.createElement('div'); ph.className='hint'; ph.style.margin='8px 0 1px'; ph.innerHTML='<b>Turn pivot</b> — the red dot is where the car spins. Slide it toward the nose (+) so a model whose origin sits at the tail turns around its <b>centre</b>, not the back.'; vBody.appendChild(ph); }
+          row('Pivot (m)','pivot', -12, 12, 0.1, 1);
+          { const cb=document.createElement('button'); cb.textContent='Center pivot on model'; cb.style.cssText='margin-top:5px;width:100%;padding:4px 6px;font-size:11px;border-radius:5px;cursor:pointer;border:1px solid rgba(255,77,109,0.5);background:rgba(255,77,109,0.14);color:#ffd7df;';
+            cb.onclick=()=>{ pushUndoSnapshot(); const box=new THREE.Box3().setFromObject(sel); const ctr=box.getCenter(new THREE.Vector3());
+              const fwd=new THREE.Vector3(0,0,-1).applyAxisAngle(_UP_Y,(V.modelYaw||0)*RAD).applyQuaternion(sel.quaternion).normalize();
+              V.pivot=+(ctr.sub(sel.position).dot(fwd)).toFixed(2); renderEditorFields(); };   // pivot = forward distance from origin to the bounding-box centre
+            vBody.appendChild(cb); }
           { const bh=document.createElement('div'); bh.className='hint'; bh.style.margin='8px 0 1px'; bh.innerHTML='<b>Boost</b> — hold <b>Shift</b> while driving. Multiplier 1 = off.'; vBody.appendChild(bh); }
           row('Boost ×','boost', 1, 4, 0.05, 1);
           row('Boost time (s)','boostDur', 0.5, 15, 0.5, 1);
@@ -23300,16 +23317,27 @@ function _ensureVehArrow(){
     _vehArrow.renderOrder=999; _vehArrow.visible=false; scene.add(_vehArrow); }
   return _vehArrow;
 }
+let _vehPivotDot = null;   // build 721: a marker at the turn pivot, so authors can dial it onto the car's centre
+function _ensureVehPivot(){
+  if(!_vehPivotDot){ const g=new THREE.SphereGeometry(0.32, 16, 12);
+    const m=new THREE.MeshBasicMaterial({ color:0xff4d6d, depthTest:false, transparent:true, opacity:0.92 });
+    _vehPivotDot=new THREE.Mesh(g,m); _vehPivotDot.renderOrder=1000; _vehPivotDot.visible=false; scene.add(_vehPivotDot); }
+  return _vehPivotDot;
+}
 const _vaFwd=new THREE.Vector3(), _vaBox=new THREE.Box3(), _vaSz=new THREE.Vector3(), _vaCtr=new THREE.Vector3();
 function _setVehArrow(o){
   const isVeh = o && editorOpen && editorActive==='props' && o.userData && o.userData.vehicle;
-  if(!isVeh){ if(_vehArrow) _vehArrow.visible=false; return; }
+  if(!isVeh){ if(_vehArrow) _vehArrow.visible=false; if(_vehPivotDot) _vehPivotDot.visible=false; return; }
   const a=_ensureVehArrow();
   _vaFwd.set(0,0,-1).applyAxisAngle(_UP_Y, (o.userData.vehicle.modelYaw||0)*RAD).applyQuaternion(o.quaternion).normalize();   // build 720: arrow follows the Model facing offset, not just the prop's -Z
   _vaBox.setFromObject(o); _vaBox.getSize(_vaSz); _vaBox.getCenter(_vaCtr);
   const len=Math.max(2, _vaSz.z*0.6 + _vaSz.length()*0.2);
   a.position.copy(_vaCtr); a.setDirection(_vaFwd); a.setLength(len, Math.min(0.9,len*0.28), Math.min(0.55,len*0.18));
   a.visible=true;
+  // build 721: pivot marker = origin + nose*pivot (where the car will spin when driven). Drag the Pivot slider onto the centre.
+  const pd=_ensureVehPivot(); const pv=+o.userData.vehicle.pivot||0;
+  pd.position.copy(o.position).addScaledVector(_vaFwd, pv); pd.position.y=_vaCtr.y;
+  pd.visible=true;
 }
 let gizmo = null, gizmoDrag = null;
 let gizmoMode = 'translate';        // 'translate' | 'rotate' | 'scale'
@@ -24005,6 +24033,7 @@ function toggleEditor(){
     if(typeof clearPreviewEnemy==='function') clearPreviewEnemy();
     if(selBox) selBox.visible = false;
     if(_vehArrow) _vehArrow.visible = false;   // build 719: hide the vehicle forward arrow when leaving the editor
+    if(_vehPivotDot) _vehPivotDot.visible = false;   // build 721: hide the pivot marker too
     for(const g of lightModels){ if(g.userData.marker) g.userData.marker.visible = false; }
     setTurretMarkersVisible(false);
     if(typeof setSpawnMarkersVisible==='function') setSpawnMarkersVisible(false);
