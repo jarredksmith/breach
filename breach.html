@@ -14503,7 +14503,8 @@ function turretFire(){
 let drivingCar = null, _carReturn = null;
 function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   maxSpeed:Math.max(2, +v.maxSpeed||16), accel:Math.max(1, +v.accel||18),
-  turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7) }; }
+  turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph') }; }
+const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
 function driveStep(speed, throttle, steer, cfg, dt){
@@ -14544,7 +14545,7 @@ function _engStop(){
 function _driveHudEl(){
   let el=document.getElementById('driveHud');
   if(!el){ el=document.createElement('div'); el.id='driveHud';
-    el.innerHTML='<div class="dhSpeed"><span id="dhVal">0</span> <small>km/h</small></div><div class="dhTrack"><div id="dhFill"></div></div><div class="dhExit">[E] / [Esc] exit</div>';
+    el.innerHTML='<div class="dhSpeed"><span id="dhVal">0</span> <small id="dhUnit">km/h</small></div><div class="dhTrack"><div id="dhFill"></div></div><div class="dhExit">[E] / [Esc] exit</div>';
     document.body.appendChild(el); }
   return el;
 }
@@ -14654,7 +14655,10 @@ function driveUpdate(dt){
   o.updateMatrixWorld(true);
   player.pos.set(o.position.x, o.position.y+EYE, o.position.z); player.vel.set(0,0,0); player.onGround=true;   // ride along; player.yaw stays free for the mouse to steer
   _engUpdate(r.speed, throttle);   // build 715: engine pitch/volume + speed HUD
-  { const v=document.getElementById('dhVal'); if(v) v.textContent=Math.round(Math.abs(r.speed)*3.6); const f=document.getElementById('dhFill'); if(f) f.style.width=Math.min(100, Math.abs(r.speed)/Math.max(1,cfg.maxSpeed)*100)+'%'; }
+  { const U=_SPEED_UNIT[cfg.units]||_SPEED_UNIT.kph;   // build 718: km/h or mph
+    const v=document.getElementById('dhVal'); if(v) v.textContent=Math.round(Math.abs(r.speed)*U.f);
+    const un=document.getElementById('dhUnit'); if(un && un.textContent!==U.l) un.textContent=U.l;
+    const f=document.getElementById('dhFill'); if(f) f.style.width=Math.min(100, Math.abs(r.speed)/Math.max(1,cfg.maxSpeed)*100)+'%'; }
 }
 let nearTarget = null;    // what the player is standing next to
 function _pickupLabel(p){   // build 616: human-readable name for an interact-pickup prompt
@@ -15262,7 +15266,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 717 · 2026-06-26';
+const BUILD_VERSION = 'build 718 · 2026-06-26';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19775,7 +19779,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; }   // build 709: drivable vehicle
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; }   // build 709/718: drivable vehicle + speed units
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22438,13 +22442,27 @@ function renderEditorFields(){
         const vsp=document.createElement('span'); vsp.innerHTML='<b>Drivable vehicle</b>';
         von.appendChild(vcb); von.appendChild(vsp); vBody.appendChild(von);
         if(sel.userData.vehicle){
-          const V=sel.userData.vehicle;
-          const num=(label,key,min,max,step)=>{ const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.minWidth='110px'; const ni=document.createElement('input'); ni.type='number'; ni.min=min; ni.max=max; ni.step=step; ni.value=(V[key]!=null?V[key]:0); ni.style.cssText='width:74px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:12px;'; ni.addEventListener('focus',()=>pushUndoSnapshot()); ni.onchange=()=>{ V[key]=parseFloat(ni.value)||0; }; l.appendChild(sp); l.appendChild(ni); vBody.appendChild(l); };
-          num('Top speed (m/s)','maxSpeed',2,60,1);
-          num('Acceleration','accel',2,80,1);
-          num('Turn rate (°/s)','turn',20,360,5);
-          num('Reverse speed','reverse',1,30,1);
-          const vh=document.createElement('div'); vh.className='hint'; vh.style.margin='4px 0 0'; vh.innerHTML='Walk up to it in-game and press <b>E</b> to drive (<b>E</b> / <b>Esc</b> to get out). Phase 1: drives + follows ramps, no wall collision yet. The prop is moved directly, so keep it a normal (non-dynamic) prop.'; vBody.appendChild(vh);
+          const V=sel.userData.vehicle; const U=_SPEED_UNIT[V.units]||_SPEED_UNIT.kph;
+          // units toggle (drives the editor speed fields + the in-game speedometer)
+          const useg=document.createElement('div'); useg.style.cssText='display:flex;gap:4px;margin-top:6px;';
+          [['kph','km/h'],['mph','mph']].forEach(o=>{ const on=((V.units||'kph')===o[0]); const b=document.createElement('button'); b.textContent=o[1]; b.style.cssText='flex:1;padding:3px 6px;font-size:11px;border-radius:5px;cursor:pointer;border:1px solid '+(on?'#7ad7ff':'rgba(122,215,255,0.3)')+';background:'+(on?'rgba(122,215,255,0.22)':'transparent')+';color:'+(on?'#eafff7':'#9fc6e6')+';'; b.onclick=()=>{ pushUndoSnapshot(); V.units=o[0]; renderEditorFields(); }; useg.appendChild(b); });
+          vBody.appendChild(useg);
+          // slider + editable number, optionally shown in display units (factor converts m/s <-> the unit)
+          const row=(label,key,mn,mx,st,factor)=>{ factor=factor||1;
+            const wrap=document.createElement('label'); wrap.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;';
+            const sp=document.createElement('span'); sp.textContent=label; sp.style.cssText='min-width:118px;flex:0 0 auto;';
+            const dv=()=> (V[key]!=null?V[key]:0)*factor;
+            const rng=document.createElement('input'); rng.type='range'; rng.min=mn; rng.max=mx; rng.step=st; rng.value=dv(); rng.style.cssText='flex:1;min-width:0;accent-color:var(--accent);';
+            const ni=document.createElement('input'); ni.type='number'; ni.min=mn; ni.max=mx; ni.step=st; ni.value=+dv().toFixed(2); ni.style.cssText='width:62px;flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:12px;';
+            const apply=(disp,fromSlider)=>{ disp=parseFloat(disp); if(isNaN(disp)) return; V[key]=disp/factor; if(fromSlider) ni.value=+disp.toFixed(2); else rng.value=disp; };
+            rng.addEventListener('pointerdown',()=>pushUndoSnapshot()); rng.oninput=()=>apply(rng.value,true);
+            ni.addEventListener('focus',()=>pushUndoSnapshot()); ni.onchange=()=>apply(ni.value,false);
+            wrap.appendChild(sp); wrap.appendChild(rng); wrap.appendChild(ni); vBody.appendChild(wrap); };
+          row('Top speed ('+U.l+')','maxSpeed', 5, 200, 1, U.f);
+          row('Acceleration','accel', 1, 80, 0.5, 1);
+          row('Turn rate (°/s)','turn', 20, 400, 1, 1);
+          row('Reverse ('+U.l+')','reverse', 2, 120, 1, U.f);
+          const vh=document.createElement('div'); vh.className='hint'; vh.style.margin='4px 0 0'; vh.innerHTML='Walk up + press <b>E</b> to drive (<b>E</b>/<b>Esc</b> to exit). <b>Turn rate</b> = how fast it swings to your view (higher = sharper turns). Speeds use the unit above. Keep it a normal (non-dynamic) prop.'; vBody.appendChild(vh);
         }
       }
       // ---- Joint (physics, build 707): hinge a DYNAMIC prop to a world point or another tagged body ----

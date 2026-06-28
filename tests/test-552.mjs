@@ -68,11 +68,13 @@ assert(/_vy=\(_climb>0\.8\)\?Math\.min\(_climb,14\):0;/.test(src), 'climbing a r
 assert(/o\.rotation\.order='YXZ'; o\.rotation\.x=o\.userData\.carPitch; o\.rotation\.z=o\.userData\.carRoll;/.test(src), 'the body pitches/rolls to the surface (no clip-through)');
 
 // --- serialize + restore (compact veh) at all three prop-load sites ---
-assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; \}/.test(src), 'vehicle serialized');
+assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; if\(V\.units==='mph'\) e\.veh\.units='mph'; \}/.test(src), 'vehicle (+ units) serialized');
 eq(src.split('if(p.veh) vehicleApply(obj, p.veh);').length - 1, 3, 'vehicle restored at all three prop-load sites');
 
 // --- editor fold ---
 assert(/edFold\(animHost, 'vehicle', 'Vehicle \(drivable\)'/.test(src), 'a Vehicle (drivable) fold in the inspector');
-assert(/num\('Top speed \(m\/s\)','maxSpeed'/.test(src) && /num\('Turn rate \(°\/s\)','turn'/.test(src), 'top-speed + turn-rate controls');
+assert(/row\('Top speed \('\+U\.l\+'\)','maxSpeed', 5, 200, 1, U\.f\)/.test(src) && /row\('Turn rate \(°\/s\)','turn', 20, 400, 1, 1\)/.test(src), 'top-speed (in units) + finer turn-rate controls (build 718)');
+assert(/\[\['kph','km\/h'\],\['mph','mph'\]\]/.test(src) && /V\.units=o\[0\]/.test(src), 'a km/h <-> mph units toggle');
+assert(/units:\(v\.units==='mph'\?'mph':'kph'\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores the unit');
 
 done('build 709: drivable vehicles (arcade kinematic, Phase 1) — enter / throttle-steer / chase cam / ground follow');

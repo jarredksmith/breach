@@ -20,7 +20,8 @@ assert(/if\(typeof _engStop==='function'\) _engStop\(\);/.test(extractFunction('
 // --- per-frame update: engine + speedometer (km/h + bar) ---
 const du = extractFunction('driveUpdate');
 assert(/_engUpdate\(r\.speed, throttle\);/.test(du), 'the engine is updated each frame with speed + throttle');
-assert(/v\.textContent=Math\.round\(Math\.abs\(r\.speed\)\*3\.6\)/.test(du), 'speed shown in km/h (m/s * 3.6)');
+assert(/const U=_SPEED_UNIT\[cfg\.units\]\|\|_SPEED_UNIT\.kph;/.test(du) && /v\.textContent=Math\.round\(Math\.abs\(r\.speed\)\*U\.f\)/.test(du), 'speed shown in the vehicle’s unit (km/h or mph)');
+assert(/un\.textContent=U\.l/.test(du), 'the unit label tracks the setting');
 assert(/f\.style\.width=Math\.min\(100, Math\.abs\(r\.speed\)\/Math\.max\(1,cfg\.maxSpeed\)\*100\)\+'%'/.test(du), 'the bar fills toward top speed');
 
 // --- the HUD element + its styles exist ---
