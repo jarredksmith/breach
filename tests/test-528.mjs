@@ -12,7 +12,7 @@ assert(/if\(s\.when !== when\) continue;/.test(fs) && /_applySignalAction\(s, o\
 // --- contact detection ---
 const cp = extractFunction('_contactObjectPresent');
 assert(/_cBoxA\.setFromObject\(detector\)/.test(cp), 'the detector AABB is computed');
-assert(/if\(!c\.userData \|\| !c\.userData\.phys\) continue;/.test(cp), 'only physical (dynamic) props can be placed');
+assert(/if\(!c\.userData \|\| !\(c\.userData\.phys \|\| \(c\.userData\.xa && c\.userData\.xa\.on\)\)\) continue;/.test(cp), 'a placed dynamic prop OR a moving animated prop counts as the toucher (build 714)');
 assert(/if\(from && c\.userData\.tag !== from\) continue;/.test(cp), 'an optional tag filters which object counts');
 assert(/if\(s\.contain\)\{ _cBoxB\.getCenter\(_cCtr\); if\(_cBoxA\.containsPoint\(_cCtr\)\) return true; \}/.test(cp), '"inside" mode tests the object centre');
 assert(/else if\(_cBoxA\.intersectsBox\(_cBoxB\)\) return true;/.test(cp), '"touching" mode tests AABB overlap');

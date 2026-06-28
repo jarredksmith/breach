@@ -7117,8 +7117,8 @@ function broadcastAnim(i, clip){
 // ---------- Transform-animated mechanisms: move/rotate any object (platforms, doors). userData.xa holds the
 // authored offset + playback/trigger; base transform is captured at deploy so the editor position is point A. ----------
 const _XA_D2R = Math.PI/180;
-function _xaMoves(a){ return !!(a && a.on && ((a.path && a.path.length>=2) || a.mx || a.my || a.mz || a.rx || a.ry || a.rz)); }
-function xaApply(o, sx){ o.userData.xa = { on:true, mode:sx.mode||'loop', trig:sx.trig||'auto', mx:sx.mx||0, my:sx.my||0, mz:sx.mz||0, rx:sx.rx||0, ry:sx.ry||0, rz:sx.rz||0, pvx:sx.pvx||0, pvy:sx.pvy||0, pvz:sx.pvz||0, dur:sx.dur||2, path:(sx.path&&sx.path.length>=2)?sx.path.map(q=>[+q[0]||0,+q[1]||0,+q[2]||0]):undefined };
+function _xaMoves(a){ return !!(a && a.on && ((a.path && a.path.length>=2) || a.mx || a.my || a.mz || a.rx || a.ry || a.rz || a.scx || a.scy || a.scz)); }
+function xaApply(o, sx){ o.userData.xa = { on:true, mode:sx.mode||'loop', trig:sx.trig||'auto', mx:sx.mx||0, my:sx.my||0, mz:sx.mz||0, rx:sx.rx||0, ry:sx.ry||0, rz:sx.rz||0, scx:sx.scx||0, scy:sx.scy||0, scz:sx.scz||0, pvx:sx.pvx||0, pvy:sx.pvy||0, pvz:sx.pvz||0, dur:sx.dur||2, path:(sx.path&&sx.path.length>=2)?sx.path.map(q=>[+q[0]||0,+q[1]||0,+q[2]||0]):undefined };
   // a body can't be both scripted along a path AND shoved by physics: animation wins, so an animated prop is never dynamic
   if(_xaMoves(o.userData.xa) && o.userData.phys) setPropDynamic(o, false); }
 // build 707: physics JOINT config (Rapier impulse joint). A dynamic prop can be hinged to a fixed world point or to
@@ -7132,7 +7132,7 @@ function jointApply(o, j){ if(!o||!j) return; o.userData.joint = {
   mspeed:+j.mspeed||0, mstr:(j.mstr!=null?+j.mstr:1) }; }
 function _xaEach(fn){ for(const o of propModels){ const a=o&&o.userData&&o.userData.xa; if(a&&a.on) fn(o,a); } }
 function xaCapture(){ _xaEach((o,a)=>{ a.bpx=undefined; a.ph=0; a.dir=1; a.dest=0; }); }   // deploy: recapture point A on the next frame
-function xaSnapToBase(){ _xaEach((o,a)=>{ a.ph=0; a.dir=1; a.dest=0; if(a.bpx!==undefined){ o.position.set(a.bpx,a.bpy,a.bpz); o.rotation.set(a.brx,a.bry,a.brz); o.updateMatrixWorld(true); if(colliders.indexOf(o)>=0||o.userData.box) refreshPropCollider(o); } }); }   // editor: show point A
+function xaSnapToBase(){ _xaEach((o,a)=>{ a.ph=0; a.dir=1; a.dest=0; if(a.bpx!==undefined){ o.position.set(a.bpx,a.bpy,a.bpz); o.rotation.set(a.brx,a.bry,a.brz); if(a.bscx!==undefined) o.scale.set(a.bscx,a.bscy,a.bscz); o.updateMatrixWorld(true); if(colliders.indexOf(o)>=0||o.userData.box) refreshPropCollider(o); } }); }   // editor: show point A
 function xaToggle(o){ const a=o&&o.userData&&o.userData.xa; if(!a||!a.on) return; if(a.mode==='once' && a.dest){ return; }   // Once locks open
   a.dest = a.dest?0:1; if(SFX&&SFX.swap) SFX.swap(); }
 // Locked props: an interactable with a lockId needs the matching key on E. Unlocking is permanent for
@@ -7221,7 +7221,7 @@ function _contactObjectPresent(detector, s){
   _cBoxA.setFromObject(detector); if(_cBoxA.isEmpty()) return false;
   for(let i=0;i<propModels.length;i++){
     const c = propModels[i]; if(!c || c===detector) continue;
-    if(!c.userData || !c.userData.phys) continue;        // only a physical (dynamic) prop can be "placed"
+    if(!c.userData || !(c.userData.phys || (c.userData.xa && c.userData.xa.on))) continue;   // build 714: a PLACED dynamic prop OR a MOVING animated prop (e.g. sliding water) counts as the toucher
     if(from && c.userData.tag !== from) continue;         // optional filter: only objects with this tag count
     _cBoxB.setFromObject(c); if(_cBoxB.isEmpty()) continue;
     if(s.contain){ _cBoxB.getCenter(_cCtr); if(_cBoxA.containsPoint(_cCtr)) return true; }   // its centre sits inside the detector
@@ -7404,7 +7404,7 @@ function updateXAnim(dt){
   if(!gameOn || editorOpen || paused) return;
   for(const o of propModels){
     const a=o&&o.userData&&o.userData.xa; if(!a||!a.on) continue;
-    if(a.bpx===undefined){ a.bpx=o.position.x; a.bpy=o.position.y; a.bpz=o.position.z; a.brx=o.rotation.x; a.bry=o.rotation.y; a.brz=o.rotation.z; if(a.ph==null)a.ph=0; if(a.dir==null)a.dir=1; if(a.dest==null)a.dest=0; }
+    if(a.bpx===undefined){ a.bpx=o.position.x; a.bpy=o.position.y; a.bpz=o.position.z; a.brx=o.rotation.x; a.bry=o.rotation.y; a.brz=o.rotation.z; a.bscx=o.scale.x; a.bscy=o.scale.y; a.bscz=o.scale.z; if(a.ph==null)a.ph=0; if(a.dir==null)a.dir=1; if(a.dest==null)a.dest=0; }
     const dur=Math.max(0.05, a.dur||2), step=dt/dur; let lin=false;
     if(a.trig==='interact' || a.trig==='signal'){ const tgt=a.dest?1:0; if(a.ph<tgt) a.ph=Math.min(tgt,a.ph+step); else if(a.ph>tgt) a.ph=Math.max(tgt,a.ph-step); }
     else if(a.mode==='once'){ if(a.ph<1) a.ph=Math.min(1,a.ph+step); }
@@ -7434,9 +7434,10 @@ function updateXAnim(dt){
         o.rotation.set(a.brx+_ax, a.bry+_ay, a.brz+_az);
       }
     }
+    if(a.scx||a.scy||a.scz){ o.scale.set((a.bscx||1)+(a.scx||0)*e, (a.bscy||1)+(a.scy||0)*e, (a.bscz||1)+(a.scz||0)*e); }   // build 714: animate scale (offset from the base scale)
     const dx=o.position.x-ox, dy=o.position.y-oy, dz=o.position.z-oz;
-    const turns=(a.rx||a.ry||a.rz);   // a rotating prop's surface moves even when its origin doesn't
-    if(dx||dy||dz||turns){
+    const turns=(a.rx||a.ry||a.rz), scaled=(a.scx||a.scy||a.scz);   // a rotating/scaling prop's surface moves even when its origin doesn't
+    if(dx||dy||dz||turns||scaled){
       o.updateMatrixWorld(true);
       // Carry/launch BEFORE refreshing the collider: the player is standing on the prop's PREVIOUS pose,
       // so gate the ride on THAT box. Re-gating on the just-rotated box (whose footprint collapses toward
@@ -15187,7 +15188,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 713 · 2026-06-26';
+const BUILD_VERSION = 'build 714 · 2026-06-26';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19698,7 +19699,7 @@ function propEntry(o){
   if(o.userData.animTrigger && o.userData.animTrigger!=='auto') e.animTrig=o.userData.animTrigger;
   if(o.userData.animPlay && o.userData.animPlay!=='loop') e.animPlay=o.userData.animPlay;
   if(o.userData.animClip) e.animClip = o.userData.animClip;
-  if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
+  if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
   if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; }   // build 709: drivable vehicle
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
@@ -22414,6 +22415,8 @@ function renderEditorFields(){
           const num=(label,key,min,max,step)=>{ const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.minWidth='90px'; const ni=document.createElement('input'); ni.type='number'; ni.min=min; ni.max=max; ni.step=step; ni.value=xa[key]||0; ni.style.cssText='width:74px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:12px;'; ni.addEventListener('focus',()=>pushUndoSnapshot()); ni.onchange=()=>{ xa[key]=parseFloat(ni.value)||0; }; l.appendChild(sp); l.appendChild(ni); xBody.appendChild(l); };
           num('Move X (m)','mx',-200,200,0.1); num('Move Y (m)','my',-200,200,0.1); num('Move Z (m)','mz',-200,200,0.1);
           num('Rotate X (\u00b0)','rx',-3600,3600,5); num('Rotate Y (\u00b0)','ry',-3600,3600,5); num('Rotate Z (\u00b0)','rz',-3600,3600,5);
+          num('Scale X','scx',-10,10,0.1); num('Scale Y','scy',-10,10,0.1); num('Scale Z','scz',-10,10,0.1);   // build 714: grow/shrink over the animation (added to the base scale)
+          { const sh=document.createElement('div'); sh.className='hint'; sh.style.marginTop='2px'; sh.textContent='Scale is added to the prop\u2019s base size over the animation (e.g. Scale Y 1 doubles its height; -0.5 shrinks it to half). Leave at 0 for no size change.'; xBody.appendChild(sh); }
           num('Pivot X (m)','pvx',-200,200,0.1); num('Pivot Y (m)','pvy',-200,200,0.1); num('Pivot Z (m)','pvz',-200,200,0.1);
           { const ph=document.createElement('div'); ph.className='hint'; ph.style.marginTop='2px'; ph.textContent='Pivot offsets the rotation centre from the prop\u2019s middle (e.g. set Pivot X to half the width so a door hinges at its edge). Leave at 0 to spin about the centre.'; xBody.appendChild(ph); }
           num('Duration (s)','dur',0.1,60,0.1);

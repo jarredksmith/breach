@@ -21,6 +21,6 @@ assert(/\{ const kd = Math\.max\(0, 1 - \(player\.onGround \? 6 : 0\.6\)\*dt\)/.
 assert(/player\.pos\.x\+=mvx; player\.pos\.y\+=mvy; player\.pos\.z\+=mvz;/.test(xc), 'slow surface carries (rides)');
 // updateXAnim calls carry on rotation too
 const ux = extractFunction('updateXAnim');
-assert(/const turns=\(a\.rx\|\|a\.ry\|\|a\.rz\);/.test(ux) && /if\(dx\|\|dy\|\|dz\|\|turns\)\{/.test(ux), 'rotation-only props still drive the carry');
+assert(/const turns=\(a\.rx\|\|a\.ry\|\|a\.rz\), scaled=\(a\.scx\|\|a\.scy\|\|a\.scz\);/.test(ux) && /if\(dx\|\|dy\|\|dz\|\|turns\|\|scaled\)\{/.test(ux), 'rotation- or scale-only props still drive the carry (build 714)');
 assert(/_xaCarry\(o, _xaOldBox, _xaPrevP, _xaPrevQ, dt, _peakSp\)/.test(ux), 'carry gets the pre-rotation box + prev transform + dt');
 done('proximity-Y + platform carry/launch');
