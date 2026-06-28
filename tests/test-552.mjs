@@ -34,7 +34,7 @@ assert(/if\(drivingCar\)\{ exitCar\(\); return; \}/.test(extractFunction('intera
 assert(/nearTarget\.type==='vehicle'\)\{\s*enterCar\(nearTarget\.obj\);/.test(extractFunction('interact')), 'E on a vehicle gets you in');
 assert(/if\(drivingCar\)\{ wish\.set\(0,0,0\); moveScale=0; \}/.test(src), 'foot movement is frozen while driving');
 assert(/if\(drivingCar\) driveUpdate\(dt\);/.test(src), 'driveUpdate runs each frame while driving');
-assert(/\} else if\(drivingCar\)\{[\s\S]*?const o=drivingCar, yaw=player\.yaw[\s\S]*?camera\.position\.set\(_tx - fx\*6\.5/.test(src), 'a chase camera orbits with the look (player.yaw)');
+assert(/\} else if\(drivingCar\)\{[\s\S]*?const o=drivingCar, yaw=player\.yaw[\s\S]*?camera\.position\.set\(_tx - fx\*_cd/.test(src), 'a chase camera orbits with the look (player.yaw)');
 
 // --- build 711: mouse-orbit steering — the car turns toward where you look (player.yaw), not A/D ---
 const du = extractFunction('driveUpdate');
@@ -68,7 +68,7 @@ assert(/_vy=\(_climb>0\.8\)\?Math\.min\(_climb,14\):0;/.test(src), 'climbing a r
 assert(/_carEuler\.set\(o\.userData\.carPitch, carYaw, o\.userData\.carRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface in the travel frame (no clip-through)');
 
 // --- serialize + restore (compact veh) at all three prop-load sites ---
-assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; if\(V\.units==='mph'\) e\.veh\.units='mph'; if\(V\.boost>1\.01\)\{ e\.veh\.boost=V\.boost; e\.veh\.boostDur=V\.boostDur; e\.veh\.boostCd=V\.boostCd; \} if\(V\.modelYaw\) e\.veh\.modelYaw=V\.modelYaw; if\(V\.pivot\) e\.veh\.pivot=V\.pivot; \}/.test(src), 'vehicle (+ units + boost + model facing + pivot) serialized');
+assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; if\(V\.units==='mph'\) e\.veh\.units='mph'; if\(V\.boost>1\.01\)\{ e\.veh\.boost=V\.boost; e\.veh\.boostDur=V\.boostDur; e\.veh\.boostCd=V\.boostCd; \} if\(V\.modelYaw\) e\.veh\.modelYaw=V\.modelYaw; if\(V\.pivot\) e\.veh\.pivot=V\.pivot;/.test(src), 'vehicle (+ units + boost + model facing + pivot) serialized');
 eq(src.split('if(p.veh) vehicleApply(obj, p.veh);').length - 1, 3, 'vehicle restored at all three prop-load sites');
 
 // --- editor fold ---
@@ -113,4 +113,14 @@ assert(/pd\.position\.copy\(o\.position\)\.addScaledVector\(_vaFwd, pv\);/.test(
   const Px2=ox+f1x*pv, Pz2=oz+f1z*pv; // pivot point after the turn
   near(Px2, Px, 1e-9, 'pivot X is unmoved by the turn'); near(Pz2, Pz, 1e-9, 'pivot Z is unmoved by the turn'); }
 
-done('build 709-721: drivable vehicles — drive / collision / ramps / units / boost / forward arrow / model facing / turn pivot');
+// --- build 722: fit-to-model placement — chase-cam distance/height + ride height (no float/sink) ---
+assert(/camDist:\+v\.camDist\|\|0, camHigh:\+v\.camHigh\|\|0, rideHeight:\+v\.rideHeight\|\|0/.test(extractFunction('vehicleApply')), 'vehicleApply stores camera + ride trims');
+assert(/o\.userData\.carBaseOff = _bb\.isEmpty\(\)\?0:\(o\.position\.y - _bb\.min\.y\);/.test(extractFunction('enterCar')), 'entering measures origin->lowest-point so the wheels rest on the ground');
+assert(/const _base=\(o\.userData\.carBaseOff\|\|0\)\+\(\+cfg\.rideHeight\|\|0\), _rest=gC\+_base;/.test(du), 'the car rests at ground + base offset (+ ride trim), not origin-on-ground');
+assert(/if\(_ny<=_rest\)\{ _ny=_rest;/.test(du) && /const _grounded=\(_ny-_rest\)<0\.12;/.test(du), 'the vertical solve snaps + grounds against the rest height');
+assert(/const _cd=Math\.max\(2\.5, _ex\.hd\*2\.4 \+ _ex\.hw\*0\.5 \+ 4 \+ \(\+_vv\.camDist\|\|0\)\);/.test(src), 'chase-cam distance fits the model depth/width, trimmable by camDist');
+assert(/const _ch=Math\.max\(1\.2, _ex\.hh\*1\.8 \+ 1\.5 \+ \(\+_vv\.camHigh\|\|0\)\);/.test(src) && /camera\.position\.set\(_tx - fx\*_cd, o\.position\.y \+ _ch, _tz - fz\*_cd\)/.test(src), 'chase-cam height fits the model height, trimmable by camHigh');
+assert(/if\(V\.camDist\) e\.veh\.camDist=V\.camDist; if\(V\.camHigh\) e\.veh\.camHigh=V\.camHigh; if\(V\.rideHeight\) e\.veh\.rideHeight=V\.rideHeight;/.test(src), 'camera + ride trims serialized');
+assert(/row\('Camera back \(±m\)','camDist'/.test(src) && /row\('Camera up \(±m\)','camHigh'/.test(src) && /row\('Ride height \(±m\)','rideHeight'/.test(src), 'editor exposes camera + ride-height rows');
+
+done('build 709-722: drivable vehicles — drive / collision / ramps / units / boost / arrow / model facing / pivot / fit-to-model cam + ride');

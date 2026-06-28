@@ -14507,7 +14507,8 @@ function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   maxSpeed:Math.max(2, +v.maxSpeed||16), accel:Math.max(1, +v.accel||18),
   turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph'),
   boost:Math.max(1, Math.min(4, +v.boost||1)), boostDur:Math.max(0.5, +v.boostDur||3), boostCd:Math.max(0, +v.boostCd||5),
-  modelYaw:+v.modelYaw||0, pivot:+v.pivot||0 }; }   // build 719: boost; 720: modelYaw aligns nose to drive dir; 721: pivot (m toward nose) = turn centre
+  modelYaw:+v.modelYaw||0, pivot:+v.pivot||0,
+  camDist:+v.camDist||0, camHigh:+v.camHigh||0, rideHeight:+v.rideHeight||0 }; }   // 719: boost; 720: modelYaw aligns nose; 721: pivot=turn centre; 722: chase-cam + ride-height trims (0=auto)
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14559,6 +14560,7 @@ function enterCar(o){
   // build 720: carYaw is the LOGICAL heading the car drives along. It starts pointing out the model's nose (placement yaw + modelYaw),
   // so a model authored facing any direction drives nose-first.
   o.userData.carYaw = o.rotation.y + (o.userData.vehicle.modelYaw||0)*RAD;
+  { o.updateMatrixWorld(true); const _bb=new THREE.Box3().setFromObject(o); o.userData.carBaseOff = _bb.isEmpty()?0:(o.position.y - _bb.min.y); }   // build 722: how far the origin sits above the model's lowest point (so wheels rest on the ground)
   _carReturn = { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch };
   player.vel.set(0,0,0); sliding=false; firing=false; ads=false;
   player.yaw = o.userData.carYaw; player.pitch = -0.18;
@@ -14666,12 +14668,15 @@ function driveUpdate(dt){
   const gB=_carGroundY(o.position.x-fx*_hd, o.position.z-fz*_hd, o);
   const gR=_carGroundY(o.position.x+_rx*_hw, o.position.z+_rz*_hw, o);
   const gL=_carGroundY(o.position.x-_rx*_hw, o.position.z-_rz*_hw, o);
-  const _cy=o.position.y; let _vy=o.userData.carVelY||0; const _climb=(gC-_cy)/dt;
+  // build 722: rest the model's WHEELS on the ground, not its origin. carBaseOff (origin->lowest point, measured on enter)
+  // cancels models whose origin sits high (float) or low (sink); rideHeight is an optional author trim.
+  const _base=(o.userData.carBaseOff||0)+(+cfg.rideHeight||0), _rest=gC+_base;
+  const _cy=o.position.y; let _vy=o.userData.carVelY||0; const _climb=(_rest-_cy)/dt;
   _vy -= GRAV*0.85*dt; let _ny=_cy+_vy*dt; const _SNAP=Math.max(0.45,_h.hh);
-  if(_ny<=gC){ _ny=gC; _vy=(_climb>0.8)?Math.min(_climb,14):0; }   // grounded: bank ramp-climb speed as launch velocity (capped)
-  else if(_vy<=0 && (_ny-gC)<_SNAP){ _ny=gC; _vy=0; }              // hug the ground over small downhill drops (no micro-hops)
+  if(_ny<=_rest){ _ny=_rest; _vy=(_climb>0.8)?Math.min(_climb,14):0; }   // grounded: bank ramp-climb speed as launch velocity (capped)
+  else if(_vy<=0 && (_ny-_rest)<_SNAP){ _ny=_rest; _vy=0; }              // hug the ground over small downhill drops (no micro-hops)
   o.position.y=_ny; o.userData.carVelY=_vy;
-  const _grounded=(_ny-gC)<0.12;
+  const _grounded=(_ny-_rest)<0.12;
   const _tp=_grounded?Math.atan2(gF-gB, 2*_hd):0, _tr=_grounded?Math.atan2(gR-gL, 2*_hw):0;   // pitch from front/back, roll from sides
   const _k=Math.min(1, dt*9);
   o.userData.carPitch=(o.userData.carPitch||0)+(_tp-(o.userData.carPitch||0))*_k;   // ease (also levels out in the air)
@@ -15302,7 +15307,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 721 · 2026-06-28';
+const BUILD_VERSION = 'build 722 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18502,9 +18507,12 @@ function loop(){
     if(editorBrightLight.intensity !== 0) editorBrightLight.intensity = 0;
     gun.visible=false;
     const o=drivingCar, yaw=player.yaw, fx=-Math.sin(yaw), fz=-Math.cos(yaw);   // build 711: orbit with the mouse (player.yaw), the car steers to follow
-    const _pv=(o.userData.vehicle&&+o.userData.vehicle.pivot)||0, _cy=(o.userData.carYaw!=null?o.userData.carYaw:o.rotation.y);   // build 721: orbit the pivot/centre, not the mesh origin
+    const _vv=o.userData.vehicle||{}, _pv=+_vv.pivot||0, _cy=(o.userData.carYaw!=null?o.userData.carYaw:o.rotation.y);   // build 721: orbit the pivot/centre, not the mesh origin
     const _tx=o.position.x - Math.sin(_cy)*_pv, _tz=o.position.z - Math.cos(_cy)*_pv;
-    camera.position.set(_tx - fx*6.5, o.position.y + 3.4, _tz - fz*6.5);
+    const _ex=_carExtents(o);   // build 722: fit the chase cam to the model's size (so a big model isn't inside it), then trim with camDist/camHigh
+    const _cd=Math.max(2.5, _ex.hd*2.4 + _ex.hw*0.5 + 4 + (+_vv.camDist||0));
+    const _ch=Math.max(1.2, _ex.hh*1.8 + 1.5 + (+_vv.camHigh||0));
+    camera.position.set(_tx - fx*_cd, o.position.y + _ch, _tz - fz*_cd);
     camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=-0.28; camera.rotation.z=0;
   } else if(editorOpen && editorTopView){
     // locked orthographic straight-down view; pan with drag, zoom with wheel
@@ -19817,7 +19825,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; }   // build 709/718/719/720/721: drivable vehicle + units + boost + model facing + pivot
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; }   // build 709-722: drivable vehicle + units + boost + model facing + pivot + camera/ride trims
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22509,6 +22517,10 @@ function renderEditorFields(){
               const fwd=new THREE.Vector3(0,0,-1).applyAxisAngle(_UP_Y,(V.modelYaw||0)*RAD).applyQuaternion(sel.quaternion).normalize();
               V.pivot=+(ctr.sub(sel.position).dot(fwd)).toFixed(2); renderEditorFields(); };   // pivot = forward distance from origin to the bounding-box centre
             vBody.appendChild(cb); }
+          { const ch=document.createElement('div'); ch.className='hint'; ch.style.margin='8px 0 1px'; ch.innerHTML='<b>Chase camera &amp; ride height</b> — auto-fit to the model size. Trim if the camera sits inside a big model, or if the model floats / sinks. <b>0 = auto.</b>'; vBody.appendChild(ch); }
+          row('Camera back (±m)','camDist', -10, 40, 0.5, 1);
+          row('Camera up (±m)','camHigh', -8, 30, 0.5, 1);
+          row('Ride height (±m)','rideHeight', -6, 6, 0.05, 1);
           { const bh=document.createElement('div'); bh.className='hint'; bh.style.margin='8px 0 1px'; bh.innerHTML='<b>Boost</b> — hold <b>Shift</b> while driving. Multiplier 1 = off.'; vBody.appendChild(bh); }
           row('Boost ×','boost', 1, 4, 0.05, 1);
           row('Boost time (s)','boostDur', 0.5, 15, 0.5, 1);
