@@ -14508,7 +14508,8 @@ function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph'),
   boost:Math.max(1, Math.min(4, +v.boost||1)), boostDur:Math.max(0.5, +v.boostDur||3), boostCd:Math.max(0, +v.boostCd||5),
   modelYaw:+v.modelYaw||0, pivot:+v.pivot||0,
-  camDist:+v.camDist||0, camHigh:+v.camHigh||0, rideHeight:+v.rideHeight||0 }; }   // 719: boost; 720: modelYaw aligns nose; 721: pivot=turn centre; 722: chase-cam + ride-height trims (0=auto)
+  camDist:+v.camDist||0, camHigh:+v.camHigh||0, rideHeight:+v.rideHeight||0,
+  grip:Math.max(0.5, +v.grip||6) }; }   // 719: boost; 720: modelYaw; 721: pivot; 722: cam/ride trims; 725: grip (lower=drifty, Space=handbrake)
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14560,6 +14561,7 @@ function enterCar(o){
   // build 720: carYaw is the LOGICAL heading the car drives along. It starts pointing out the model's nose (placement yaw + modelYaw),
   // so a model authored facing any direction drives nose-first.
   o.userData.carYaw = o.rotation.y + (o.userData.vehicle.modelYaw||0)*RAD;
+  o.userData.carVelYaw = o.userData.carYaw;   // build 725: travel direction starts aligned with the heading (no drift until you turn)
   { o.updateMatrixWorld(true); const _bb=new THREE.Box3().setFromObject(o); o.userData.carBaseOff = _bb.isEmpty()?0:(o.position.y - _bb.min.y); }   // build 722: how far the origin sits above the model's lowest point (so wheels rest on the ground)
   _carReturn = { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch };
   player.vel.set(0,0,0); sliding=false; firing=false; ads=false;
@@ -14656,6 +14658,12 @@ function driveUpdate(dt){
   // build 720: steer the LOGICAL heading (carYaw), decoupled from the prop's mesh rotation, so the model's nose can sit
   // at any offset (modelYaw) and still drive forward correctly.
   if(o.userData.carYaw==null) o.userData.carYaw = o.rotation.y + (cfg.modelYaw||0)*RAD;
+  // build 725: A and D (and the left-stick X) steer too, in conjunction with the mouse — they swing the look heading the
+  // car follows, so you can turn without moving the mouse and over-steer into a drift.
+  let steer=0; if(keys['KeyA']) steer+=1; if(keys['KeyD']) steer-=1;
+  if(typeof padMoveX!=='undefined' && padMoveX) steer-=padMoveX;
+  steer=Math.max(-1,Math.min(1,steer));
+  if(steer) player.yaw += steer * (cfg.turn*RAD) * 0.85 * dt;
   let diff = player.yaw - o.userData.carYaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // shortest angle to the look heading
   const maxStep = (cfg.turn*Math.PI/180) * speedFrac * dt;
   const _yawOld = o.userData.carYaw;
@@ -14670,7 +14678,17 @@ function driveUpdate(dt){
   // build 712 (Phase 2): wall collision — block each axis of the intended move if a wall is within reach, so the car
   // slides along walls instead of driving through them. Self-contained ray-casts; degrades to no-collision if Rapier
   // is unavailable. (Footprint is approximate; a full swept-body collider can come later.)
-  const carYaw=o.userData.carYaw, fx=-Math.sin(carYaw), fz=-Math.cos(carYaw);   // build 720: travel along the logical heading
+  const carYaw=o.userData.carYaw, hx=-Math.sin(carYaw), hz=-Math.cos(carYaw);   // heading (where the nose points)
+  // build 725: GRIP / DRIFT — the travel direction (carVelYaw) chases the heading at a grip rate. Normally sticky, so the
+  // car goes where it points; a handbrake (Space / B) or a hard turn at speed lets travel lag the heading => it slides.
+  if(o.userData.carVelYaw==null) o.userData.carVelYaw=carYaw;
+  const handbrake=(keys['Space']||keys['KeyB']);
+  const gripBase=Math.max(0.5,+cfg.grip||6), grip=handbrake?gripBase*0.16:gripBase;
+  let vd=carYaw-o.userData.carVelYaw; vd=Math.atan2(Math.sin(vd),Math.cos(vd));
+  const vstep=grip*dt; o.userData.carVelYaw += Math.max(-vstep,Math.min(vstep,vd));
+  const vYaw=o.userData.carVelYaw, fx=-Math.sin(vYaw), fz=-Math.cos(vYaw);   // travel direction — lags the heading when drifting
+  const _slip=Math.abs(Math.atan2(Math.sin(carYaw-vYaw),Math.cos(carYaw-vYaw)));   // slip angle (heading vs travel)
+  if(_slip>0.15){ const _f=1 - Math.min(0.5,_slip*0.4)*Math.min(1,dt*5); o.userData.carSpeed*=_f; r.speed*=_f; }   // tyres scrub speed in a slide
   let mvx = fx * r.speed * dt, mvz = fz * r.speed * dt;
   const _h = _carExtents(o);
   if(mvx!==0 && _carWall(o, Math.sign(mvx), 0, Math.abs(mvx), _h)) mvx = 0;
@@ -14680,10 +14698,10 @@ function driveUpdate(dt){
   if(typeof NET==='undefined' || NET.mode!=='client'){ const _sgn=Math.sign(r.speed)||1; _carShoveDynamics(o, r.speed, fx*_sgn, fz*_sgn, _h, dt); }   // build 723: host/solo authors physics — knock dynamic props (barrels) flying when we drive into them
   // build 717: ramp-aware vertical — sample the ground under the car's 4 corners, TILT the body to the surface (so the
   // ramp doesn't clip through the mesh), and give it gravity + a launch so it actually flies off a ramp edge.
-  const _hd=_h.hd, _hw=_h.hw, _rx=-fz, _rz=fx;   // right vector = forward rotated 90°
+  const _hd=_h.hd, _hw=_h.hw, _rx=-hz, _rz=hx;   // build 725: tilt to the surface under the BODY (heading frame), not the travel dir
   const gC=_carGroundY(o.position.x, o.position.z, o);
-  const gF=_carGroundY(o.position.x+fx*_hd, o.position.z+fz*_hd, o);
-  const gB=_carGroundY(o.position.x-fx*_hd, o.position.z-fz*_hd, o);
+  const gF=_carGroundY(o.position.x+hx*_hd, o.position.z+hz*_hd, o);
+  const gB=_carGroundY(o.position.x-hx*_hd, o.position.z-hz*_hd, o);
   const gR=_carGroundY(o.position.x+_rx*_hw, o.position.z+_rz*_hw, o);
   const gL=_carGroundY(o.position.x-_rx*_hw, o.position.z-_rz*_hw, o);
   // build 722: rest the model's WHEELS on the ground, not its origin. carBaseOff (origin->lowest point, measured on enter)
@@ -14712,7 +14730,7 @@ function driveUpdate(dt){
   _carModelQ.setFromAxisAngle(_UP_Y, -(cfg.modelYaw||0)*RAD);
   o.quaternion.copy(_carQuat).multiply(_carModelQ);
   o.updateMatrixWorld(true);
-  player.pos.set(o.position.x + fx*_pv, o.position.y+EYE, o.position.z + fz*_pv); player.vel.set(0,0,0); player.onGround=true;   // build 721: ride at the pivot (centre); player.yaw stays free for the mouse to steer
+  player.pos.set(o.position.x + hx*_pv, o.position.y+EYE, o.position.z + hz*_pv); player.vel.set(0,0,0); player.onGround=true;   // build 721/725: ride at the pivot (centre, heading frame); player.yaw stays free for the mouse to steer
   _engUpdate(r.speed, throttle);   // build 715: engine pitch/volume + speed HUD
   { const U=_SPEED_UNIT[cfg.units]||_SPEED_UNIT.kph;   // build 718: km/h or mph
     const v=document.getElementById('dhVal'); if(v) v.textContent=Math.round(Math.abs(r.speed)*U.f);
@@ -15331,7 +15349,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 724 · 2026-06-28';
+const BUILD_VERSION = 'build 725 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19849,7 +19867,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; }   // build 709-722: drivable vehicle + units + boost + model facing + pivot + camera/ride trims
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; }   // build 709-725: drivable vehicle + units + boost + model facing + pivot + camera/ride trims + grip
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22532,6 +22550,8 @@ function renderEditorFields(){
           row('Acceleration','accel', 1, 80, 0.5, 1);
           row('Turn rate (°/s)','turn', 20, 400, 1, 1);
           row('Reverse ('+U.l+')','reverse', 2, 120, 1, U.f);
+          { const gh=document.createElement('div'); gh.className='hint'; gh.style.margin='8px 0 1px'; gh.innerHTML='<b>Grip</b> — how hard the tyres bite. Lower = loose &amp; <b>drifty</b> (slides in turns); higher = planted. Steer with the <b>mouse</b> + <b>A/D</b>; hold <b>Space</b> to handbrake-drift.'; vBody.appendChild(gh); }
+          row('Grip','grip', 1, 12, 0.5, 1);
           { const mh=document.createElement('div'); mh.className='hint'; mh.style.margin='8px 0 1px'; mh.innerHTML='<b>Model facing</b> — rotate until the green arrow points out the <b>front</b> of your model. Drives nose-first; doesn’t move the prop.'; vBody.appendChild(mh); }
           row('Model facing (°)','modelYaw', -180, 180, 1, 1);
           { const ph=document.createElement('div'); ph.className='hint'; ph.style.margin='8px 0 1px'; ph.innerHTML='<b>Turn pivot</b> — the red dot is where the car spins. Slide it toward the nose (+) so a model whose origin sits at the tail turns around its <b>centre</b>, not the back.'; vBody.appendChild(ph); }

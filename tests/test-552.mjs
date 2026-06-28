@@ -40,7 +40,7 @@ assert(/\} else if\(drivingCar\)\{[\s\S]*?const o=drivingCar, yaw=player\.yaw[\s
 const du = extractFunction('driveUpdate');
 assert(/let diff = player\.yaw - o\.userData\.carYaw; diff = Math\.atan2\(Math\.sin\(diff\), Math\.cos\(diff\)\);/.test(du), 'steers toward the look heading (shortest angle)');
 assert(/o\.userData\.carYaw \+= Math\.max\(-maxStep, Math\.min\(maxStep, diff\)\);/.test(du), 'turn is rate-limited toward that heading');
-assert(!/keys\['KeyA'\]|keys\['KeyD'\]/.test(du), 'A/D no longer steer (mouse does)');
+assert(/let steer=0; if\(keys\['KeyA'\]\) steer\+=1; if\(keys\['KeyD'\]\) steer-=1;/.test(du) && /if\(steer\) player\.yaw \+= steer \* \(cfg\.turn\*RAD\) \* 0\.85 \* dt;/.test(du), 'build 725: A/D steer too, alongside the mouse (swing the look heading)');
 assert(/!o\.userData\.vehicle/.test(extractFunction('instanceEligible')), 'a vehicle is never instanced (so it renders where it is driven)');
 
 // --- build 712: Phase 2 wall collision — each axis of the move is blocked if a wall is within reach (slide), guarded ---
@@ -63,7 +63,7 @@ assert(/function surfaceTopAt\(x, z, exclude, skipDynamic\)\{/.test(src), 'surfa
 assert(/const _ex = exclude \? \(h\)=>\{ let o=h\.object; while\(o\)\{ if\(o===exclude\) return true; o=o\.parent; \} return false; \} : null;/.test(src), 'exclude drops an object (and its children) from the surface result');
 assert(/const gC=_carGroundY\(o\.position\.x, o\.position\.z, o\);/.test(src), 'driveUpdate samples its ground excluding the car itself');
 // build 717: ramp-aware vertical — 4-corner ground sample, surface tilt, gravity + launch
-assert(/const gF=_carGroundY\(o\.position\.x\+fx\*_hd[\s\S]*?const gB=_carGroundY\(o\.position\.x-fx\*_hd/.test(src), 'samples front + back ground to tilt to the ramp');
+assert(/const gF=_carGroundY\(o\.position\.x\+hx\*_hd[\s\S]*?const gB=_carGroundY\(o\.position\.x-hx\*_hd/.test(src), 'samples front + back ground (heading frame) to tilt to the ramp');
 assert(/_vy -= GRAV\*0\.85\*dt;/.test(src), 'the car has gravity (so it can leave a ramp)');
 assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb,7\):0;/.test(src), 'a real ramp banks launch velocity (capped); a sudden spike (wall ram) does not');
 assert(/_carEuler\.set\(o\.userData\.carPitch, carYaw, o\.userData\.carRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface in the travel frame (no clip-through)');
@@ -91,7 +91,7 @@ assert(/_vaFwd\.set\(0,0,-1\)\.applyAxisAngle\(_UP_Y, \(o\.userData\.vehicle\.mo
 // --- build 720: Model facing (modelYaw) — orient the model independently of the drive direction ---
 assert(/modelYaw:\+v\.modelYaw\|\|0/.test(extractFunction('vehicleApply')), 'vehicleApply stores a modelYaw offset');
 assert(/o\.userData\.carYaw = o\.rotation\.y \+ \(o\.userData\.vehicle\.modelYaw\|\|0\)\*RAD;/.test(extractFunction('enterCar')), 'entering seeds the logical heading from the nose (placement + modelYaw)');
-assert(/const carYaw=o\.userData\.carYaw, fx=-Math\.sin\(carYaw\), fz=-Math\.cos\(carYaw\);/.test(du), 'the car travels along the logical heading, not the mesh rotation');
+assert(/const carYaw=o\.userData\.carYaw, hx=-Math\.sin\(carYaw\), hz=-Math\.cos\(carYaw\);/.test(du), 'the heading frame is derived from carYaw (decoupled from mesh rotation)');
 assert(/_carModelQ\.setFromAxisAngle\(_UP_Y, -\(cfg\.modelYaw\|\|0\)\*RAD\);/.test(du), 'the mesh is spun by -modelYaw so the nose lines up with travel');
 assert(/row\('Model facing \(°\)','modelYaw', -180, 180, 1, 1\)/.test(src), 'editor exposes a Model facing slider');
 
@@ -99,7 +99,7 @@ assert(/row\('Model facing \(°\)','modelYaw', -180, 180, 1, 1\)/.test(src), 'ed
 assert(/pivot:\+v\.pivot\|\|0/.test(extractFunction('vehicleApply')), 'vehicleApply stores a pivot offset');
 // during a yaw change the origin shifts by (fwdOld - fwdNew)*pivot so the pivot point stays put
 assert(/const _pv=\+cfg\.pivot\|\|0;/.test(du) && /o\.position\.x \+= \(Math\.sin\(_yn\) - Math\.sin\(_yawOld\)\)\*_pv;/.test(du) && /o\.position\.z \+= \(Math\.cos\(_yn\) - Math\.cos\(_yawOld\)\)\*_pv;/.test(du), 'the turn pivots around the forward offset, not the origin');
-assert(/player\.pos\.set\(o\.position\.x \+ fx\*_pv, o\.position\.y\+EYE, o\.position\.z \+ fz\*_pv\)/.test(du), 'the rider sits at the pivot (centre), not the tail');
+assert(/player\.pos\.set\(o\.position\.x \+ hx\*_pv, o\.position\.y\+EYE, o\.position\.z \+ hz\*_pv\)/.test(du), 'the rider sits at the pivot (centre, heading frame), not the tail');
 assert(/if\(V\.pivot\) e\.veh\.pivot=V\.pivot;/.test(src), 'pivot is serialized');
 assert(/row\('Pivot \(m\)','pivot', -12, 12, 0\.1, 1\)/.test(src) && /Center pivot on model/.test(src), 'editor exposes a Pivot slider + a Center-pivot helper');
 const sva = extractFunction('_setVehArrow');
@@ -152,4 +152,21 @@ assert(/if\(typeof NET==='undefined' \|\| NET\.mode!=='client'\)\{ const _sgn=Ma
   shove(back, null, pd)({ position:{x:0,y:0,z:0} }, 10, 1, 0, { hw:0.6, hh:0.5, hd:1.2 }, 1/60);
   assert(captured===null, 'a barrel behind the car is not dragged along'); }
 
-done('build 709-724: drivable vehicles — drive / collision / ramps+openings / units / boost / arrow / facing / pivot / cam+ride / physics shove / anti-launch');
+// --- build 725: A/D steering + grip/drift model (travel direction lags the heading; handbrake to slide) ---
+assert(/grip:Math\.max\(0\.5, \+v\.grip\|\|6\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores grip (default 6)');
+assert(/o\.userData\.carVelYaw = o\.userData\.carYaw;/.test(extractFunction('enterCar')), 'entering aligns the travel direction with the heading (no drift until you turn)');
+assert(/const handbrake=\(keys\['Space'\]\|\|keys\['KeyB'\]\);/.test(du), 'Space / B is the handbrake');
+assert(/const gripBase=Math\.max\(0\.5,\+cfg\.grip\|\|6\), grip=handbrake\?gripBase\*0\.16:gripBase;/.test(du), 'the handbrake cuts grip so the travel dir lags far behind the heading (big slide)');
+assert(/const vstep=grip\*dt; o\.userData\.carVelYaw \+= Math\.max\(-vstep,Math\.min\(vstep,vd\)\);/.test(du), 'the travel direction chases the heading at the grip rate');
+assert(/const vYaw=o\.userData\.carVelYaw, fx=-Math\.sin\(vYaw\), fz=-Math\.cos\(vYaw\);/.test(du), 'the car MOVES along the travel direction (which may differ from the heading = drift)');
+assert(/if\(_slip>0\.15\)\{ const _f=1 - Math\.min\(0\.5,_slip\*0\.4\)\*Math\.min\(1,dt\*5\); o\.userData\.carSpeed\*=_f; r\.speed\*=_f; \}/.test(du), 'tyres scrub speed during a slide');
+assert(/if\(V\.grip && V\.grip!==6\) e\.veh\.grip=V\.grip;/.test(src), 'grip serialized when non-default');
+assert(/row\('Grip','grip', 1, 12, 0\.5, 1\)/.test(src), 'editor exposes a Grip slider');
+
+// executable: the travel direction eases toward the heading, and slower (more slide) under handbrake
+{ const ease=(velYaw, carYaw, grip, dt)=>{ let vd=carYaw-velYaw; vd=Math.atan2(Math.sin(vd),Math.cos(vd)); const s=grip*dt; return velYaw + Math.max(-s,Math.min(s,vd)); };
+  const gripped = ease(0, 1.0, 6, 1/60), drifty = ease(0, 1.0, 6*0.16, 1/60);
+  assert(gripped>drifty && drifty>0, 'a gripped car aligns its travel to the heading faster than a handbraking one');
+  assert(Math.abs(ease(0, 0.0001, 6, 1/60)) < 0.0002, 'no heading change => travel direction barely moves'); }
+
+done('build 709-725: drivable vehicles — drive / collision / ramps+openings / boost / facing / pivot / cam+ride / shove / anti-launch / A·D steer + drift');
