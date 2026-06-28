@@ -299,6 +299,7 @@
   #driveHud .dhSpeed small { font-size:12px; opacity:.7; }
   #driveHud .dhTrack { width:180px; height:7px; margin:5px auto 0; background:rgba(0,0,0,.5); border:1px solid rgba(255,255,255,.2); border-radius:5px; overflow:hidden; }
   #driveHud #dhFill { height:100%; width:0%; background:linear-gradient(90deg,#38f5b5,#ffd166); transition:width .1s linear; }
+  #driveHud .dhBoost { margin-top:6px; font-size:12px; font-weight:700; letter-spacing:2px; min-height:15px; }
   #driveHud .dhExit { margin-top:6px; font-size:11px; color:#9fdcc9; letter-spacing:1px; }
   #tFire { right:28px; bottom:42px; width:94px; height:94px; font-size:14px; }
   #tAim { right:138px; bottom:74px; width:66px; height:66px; }
@@ -11792,7 +11793,7 @@ function _applyCrushFromProp(obj, speed, dt){
   if(obj.userData._crushT > 0) return;
   const box = _CRUSH_TMP_BOX.setFromObject(obj);
   let hit = false;
-  if(cd.player && gameOn && (player.hp==null || player.hp>0) && _propBoxHitsActor(box, player.pos.x, player.pos.y, player.pos.z, EYE, 0.4)){ applyEnemyDamageToSelf(dmg); hit = true; }
+  if(cd.player && obj!==drivingCar && gameOn && (player.hp==null || player.hp>0) && _propBoxHitsActor(box, player.pos.x, player.pos.y, player.pos.z, EYE, 0.4)){ applyEnemyDamageToSelf(dmg); hit = true; }   // build 719: the car you're driving never crushes you (you're riding inside it)
   if(cd.ai){
     if(typeof bots!=='undefined'){ for(const b of bots){ if(b.dead) continue; if(_propBoxHitsActor(box, b.pos.x, b.pos.y, b.pos.z, 1.7, 0.4)){ botHurt(b, dmg, null, null); hit = true; } } }
     if(typeof enemies!=='undefined'){ for(const en of enemies){ if(!en || en.hp<=0 || !en.mesh) continue; const ep=en.mesh.position; if(_propBoxHitsActor(box, ep.x, ep.y, ep.z, 1.7, 0.4)){ enemyHurt(en, dmg, null, null); hit = true; } } }
@@ -14503,7 +14504,8 @@ function turretFire(){
 let drivingCar = null, _carReturn = null;
 function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   maxSpeed:Math.max(2, +v.maxSpeed||16), accel:Math.max(1, +v.accel||18),
-  turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph') }; }
+  turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph'),
+  boost:Math.max(1, Math.min(4, +v.boost||1)), boostDur:Math.max(0.5, +v.boostDur||3), boostCd:Math.max(0, +v.boostCd||5) }; }   // build 719: hold Shift to boost
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14545,13 +14547,13 @@ function _engStop(){
 function _driveHudEl(){
   let el=document.getElementById('driveHud');
   if(!el){ el=document.createElement('div'); el.id='driveHud';
-    el.innerHTML='<div class="dhSpeed"><span id="dhVal">0</span> <small id="dhUnit">km/h</small></div><div class="dhTrack"><div id="dhFill"></div></div><div class="dhExit">[E] / [Esc] exit</div>';
+    el.innerHTML='<div class="dhSpeed"><span id="dhVal">0</span> <small id="dhUnit">km/h</small></div><div class="dhTrack"><div id="dhFill"></div></div><div id="dhBoost" class="dhBoost"></div><div class="dhExit">[E] / [Esc] exit</div>';
     document.body.appendChild(el); }
   return el;
 }
 function enterCar(o){
   if(drivingCar || !o || !o.userData.vehicle) return;
-  drivingCar = o; o.userData.carSpeed = 0; o.userData.carVelY = 0; o.userData.carPitch = 0; o.userData.carRoll = 0;
+  drivingCar = o; o.userData.carSpeed = 0; o.userData.carVelY = 0; o.userData.carPitch = 0; o.userData.carRoll = 0; o.userData.boostT = 0; o.userData.boostCdT = 0;
   _carReturn = { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch };
   player.vel.set(0,0,0); sliding=false; firing=false; ads=false;
   player.yaw = o.rotation.y; player.pitch = -0.18;
@@ -14615,7 +14617,14 @@ function driveUpdate(dt){
   if(keys['KeyW']) throttle+=1; if(keys['KeyS']) throttle-=1;
   if(padMoveZ) throttle += -padMoveZ;   // left stick / W,S = throttle + reverse
   throttle=Math.max(-1,Math.min(1,throttle));
-  const r = driveStep(o.userData.carSpeed||0, throttle, 0, cfg, dt);   // driveStep handles the SPEED; steering is mouse-orbit below
+  // build 719: BOOST — hold Shift to surge for boostDur seconds, then a boostCd cooldown before it's ready again.
+  const bMult=+cfg.boost||1, boostKey=(keys['ShiftLeft']||keys['ShiftRight']);
+  if(o.userData.boostCdT>0) o.userData.boostCdT=Math.max(0, o.userData.boostCdT-dt);
+  if(o.userData.boostT>0){ o.userData.boostT-=dt; if(o.userData.boostT<=0){ o.userData.boostT=0; o.userData.boostCdT=+cfg.boostCd||0; } }
+  else if(boostKey && bMult>1.01 && (o.userData.boostCdT||0)<=0 && throttle>0){ o.userData.boostT=+cfg.boostDur||3; }   // engage (forward only)
+  const boosting=o.userData.boostT>0;
+  const effCfg = boosting ? { maxSpeed:cfg.maxSpeed*bMult, accel:cfg.accel*1.5, turn:cfg.turn, reverse:cfg.reverse } : cfg;
+  const r = driveStep(o.userData.carSpeed||0, throttle, 0, effCfg, dt);   // driveStep handles the SPEED; steering is mouse-orbit below
   o.userData.carSpeed = r.speed;
   // build 711: steer toward where the camera is looking (player.yaw, driven by the mouse / right stick). The car curves
   // to align with your view, rate-limited by its turn speed and scaled by how fast it's moving (no turning at a stop).
@@ -14658,7 +14667,13 @@ function driveUpdate(dt){
   { const U=_SPEED_UNIT[cfg.units]||_SPEED_UNIT.kph;   // build 718: km/h or mph
     const v=document.getElementById('dhVal'); if(v) v.textContent=Math.round(Math.abs(r.speed)*U.f);
     const un=document.getElementById('dhUnit'); if(un && un.textContent!==U.l) un.textContent=U.l;
-    const f=document.getElementById('dhFill'); if(f) f.style.width=Math.min(100, Math.abs(r.speed)/Math.max(1,cfg.maxSpeed)*100)+'%'; }
+    const f=document.getElementById('dhFill'); if(f) f.style.width=Math.min(100, Math.abs(r.speed)/Math.max(1,cfg.maxSpeed)*100)+'%';
+    const bd=document.getElementById('dhBoost');   // build 719: boost status
+    if(bd){ if(bMult<=1.01){ bd.textContent=''; }
+      else if(boosting){ bd.textContent='⚡ BOOST'; bd.style.color='#ffd166'; }
+      else if((o.userData.boostCdT||0)>0){ bd.textContent='COOLDOWN '+(o.userData.boostCdT).toFixed(1)+'s'; bd.style.color='#6f9385'; }
+      else { bd.textContent='⚡ SHIFT: BOOST'; bd.style.color='#38f5b5'; } }
+  }
 }
 let nearTarget = null;    // what the player is standing next to
 function _pickupLabel(p){   // build 616: human-readable name for an interact-pickup prompt
@@ -15266,7 +15281,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 718 · 2026-06-26';
+const BUILD_VERSION = 'build 719 · 2026-06-26';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -15843,7 +15858,7 @@ function moveKCC(dt){
   const mv = playerCtrl.computedMovement();
   player.pos.x += mv.x; player.pos.y += mv.y; player.pos.z += mv.z;
   if(playerCtrl.computedGrounded()){
-    if(_playerWasAir && gameCfg.fallDamage && gameCfg.fallDamage.on && gameCfg.fallDamage.player && gameOn && (player.hp==null || player.hp>0)){
+    if(_playerWasAir && !drivingCar && gameCfg.fallDamage && gameCfg.fallDamage.on && gameCfg.fallDamage.player && gameOn && (player.hp==null || player.hp>0)){   // build 719: no fall damage while driving (the car handles its own landings)
       const dmg = _fallDamageFor(-player.vel.y);   // vel.y is negative while falling
       if(dmg > 0.5) applyEnemyDamageToSelf(dmg);
     }
@@ -19779,7 +19794,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; }   // build 709/718: drivable vehicle + speed units
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } }   // build 709/718/719: drivable vehicle + units + boost
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22462,6 +22477,10 @@ function renderEditorFields(){
           row('Acceleration','accel', 1, 80, 0.5, 1);
           row('Turn rate (°/s)','turn', 20, 400, 1, 1);
           row('Reverse ('+U.l+')','reverse', 2, 120, 1, U.f);
+          { const bh=document.createElement('div'); bh.className='hint'; bh.style.margin='8px 0 1px'; bh.innerHTML='<b>Boost</b> — hold <b>Shift</b> while driving. Multiplier 1 = off.'; vBody.appendChild(bh); }
+          row('Boost ×','boost', 1, 4, 0.05, 1);
+          row('Boost time (s)','boostDur', 0.5, 15, 0.5, 1);
+          row('Cooldown (s)','boostCd', 0, 30, 0.5, 1);
           const vh=document.createElement('div'); vh.className='hint'; vh.style.margin='4px 0 0'; vh.innerHTML='Walk up + press <b>E</b> to drive (<b>E</b>/<b>Esc</b> to exit). <b>Turn rate</b> = how fast it swings to your view (higher = sharper turns). Speeds use the unit above. Keep it a normal (non-dynamic) prop.'; vBody.appendChild(vh);
         }
       }
@@ -23257,6 +23276,26 @@ function updateFieldDisplays(){
 
 // ---------- Selection highlight + click-to-select + transform gizmo ----------
 let selBox = null;
+// build 719: a forward-direction arrow shown on a selected vehicle, so authors can orient their model — the car drives
+// toward the arrow (its local -Z). Rotate the model so its nose points the same way.
+let _vehArrow = null;
+function _ensureVehArrow(){
+  if(!_vehArrow){ _vehArrow = new THREE.ArrowHelper(new THREE.Vector3(0,0,-1), new THREE.Vector3(), 3, 0xffd166, 0.7, 0.45);
+    if(_vehArrow.line) _vehArrow.line.material.depthTest=false; if(_vehArrow.cone) _vehArrow.cone.material.depthTest=false;
+    _vehArrow.renderOrder=999; _vehArrow.visible=false; scene.add(_vehArrow); }
+  return _vehArrow;
+}
+const _vaFwd=new THREE.Vector3(), _vaBox=new THREE.Box3(), _vaSz=new THREE.Vector3(), _vaCtr=new THREE.Vector3();
+function _setVehArrow(o){
+  const isVeh = o && editorOpen && editorActive==='props' && o.userData && o.userData.vehicle;
+  if(!isVeh){ if(_vehArrow) _vehArrow.visible=false; return; }
+  const a=_ensureVehArrow();
+  _vaFwd.set(0,0,-1).applyQuaternion(o.quaternion).normalize();
+  _vaBox.setFromObject(o); _vaBox.getSize(_vaSz); _vaBox.getCenter(_vaCtr);
+  const len=Math.max(2, _vaSz.z*0.6 + _vaSz.length()*0.2);
+  a.position.copy(_vaCtr); a.setDirection(_vaFwd); a.setLength(len, Math.min(0.9,len*0.28), Math.min(0.55,len*0.18));
+  a.visible=true;
+}
 let gizmo = null, gizmoDrag = null;
 let gizmoMode = 'translate';        // 'translate' | 'rotate' | 'scale'
 let scaleProportional = true;       // default: uniform scaling; checkbox lets the user go non-uniform
@@ -23736,11 +23775,13 @@ function updateSelectionHighlight(){
     ensureSelBoxes(list.length);
     list.forEach((o,i)=>{ const b=selBoxes[i]; b.setFromObject(boxOf(o), true); b.visible=true; });
     for(let i=list.length;i<selBoxes.length;i++) selBoxes[i].visible=false;
+    _setVehArrow(null);   // build 719: no forward arrow on a multi-selection
     updateGizmo();
     return;
   }
   for(const b of selBoxes) b.visible=false;   // not a group: hide the pooled boxes
   const o = editorOpen ? selectedSceneObject() : null;
+  _setVehArrow(o);
   if(!o){ if(selBox) selBox.visible=false; updateGizmo(); return; }
   if(!selBox){ selBox = new THREE.BoxHelper(o, 0x38f5b5); selBox.material.depthTest=false; scene.add(selBox); }
   else { selBox.setFromObject(o); }
@@ -23948,6 +23989,7 @@ function toggleEditor(){
     spawnRouteEdit = null;
     if(typeof clearPreviewEnemy==='function') clearPreviewEnemy();
     if(selBox) selBox.visible = false;
+    if(_vehArrow) _vehArrow.visible = false;   // build 719: hide the vehicle forward arrow when leaving the editor
     for(const g of lightModels){ if(g.userData.marker) g.userData.marker.visible = false; }
     setTurretMarkersVisible(false);
     if(typeof setSpawnMarkersVisible==='function') setSpawnMarkersVisible(false);

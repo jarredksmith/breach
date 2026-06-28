@@ -23,7 +23,7 @@ assert(/o === \(typeof heldProp!=='undefined' \? heldProp : null\)\) continue;/.
 
 // applies to all three actors + cooldown
 const ap = extractFunction('_applyCrushFromProp');
-assert(/cd\.player && gameOn && \(player\.hp==null \|\| player\.hp>0\) && _propBoxHitsActor\([\s\S]*?applyEnemyDamageToSelf\(dmg\)/.test(ap), 'crushes the player');
+assert(/cd\.player && obj!==drivingCar && gameOn && \(player\.hp==null \|\| player\.hp>0\) && _propBoxHitsActor\([\s\S]*?applyEnemyDamageToSelf\(dmg\)/.test(ap), 'crushes the player (but not the car they are driving, build 719)');
 assert(/for\(const b of bots\)\{[\s\S]*?botHurt\(b, dmg, null, null\)/.test(ap), 'crushes bots');
 assert(/for\(const en of enemies\)\{[\s\S]*?enemyHurt\(en, dmg, null, null\)/.test(ap), 'crushes wave enemies');
 assert(/if\(hit\) obj\.userData\._crushT = 0\.5;/.test(ap), 'one slam = one hit (0.5s per-prop cooldown)');

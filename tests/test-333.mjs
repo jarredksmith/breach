@@ -12,7 +12,7 @@ assert(/if\(!fd \|\| !fd\.on\) return 0;/.test(fn), 'disabled or absent -> no da
 assert(/const over = impactSpeed - \(\+fd\.minSpeed\|\|0\);/.test(fn) && /return over > 0 \? over \* \(\+fd\.perUnit\|\|0\) : 0;/.test(fn), 'damage = (impact - safe) * perUnit, clamped at 0');
 
 // landing hooks for all three
-assert(/_playerWasAir && gameCfg\.fallDamage && gameCfg\.fallDamage\.on && gameCfg\.fallDamage\.player && gameOn && \(player\.hp==null \|\| player\.hp>0\)/.test(src), 'player takes fall damage on the air->ground transition');
+assert(/_playerWasAir && !drivingCar && gameCfg\.fallDamage && gameCfg\.fallDamage\.on && gameCfg\.fallDamage\.player && gameOn && \(player\.hp==null \|\| player\.hp>0\)/.test(src), 'player takes fall damage on the air->ground transition (not while driving, build 719)');
 assert(/_playerWasAir = !playerCtrl\.computedGrounded\(\);/.test(src), 'player airborne state is tracked across frames');
 assert(/gameCfg\.fallDamage\.ai && !b\.dead\)\{ const dmg=_fallDamageFor\(_imp\); if\(dmg>0\.5\)\{ botHurt\(b, dmg, null, null\); \}/.test(src), 'bots take fall damage on landing');
 assert(/gameCfg\.fallDamage\.ai && en\.hp>0\)\{ const dmg=_fallDamageFor\(_imp\); if\(dmg>0\.5\)\{ enemyHurt\(en, dmg, null, null\); \}/.test(src), 'wave enemies take fall damage on landing');
