@@ -14578,13 +14578,34 @@ function exitCar(){
   if(SFX.swap) SFX.swap();
 }
 function _carGroundY(x,z,exclude){
-  if(typeof surfaceTopAt==='function'){ const s=surfaceTopAt(x,z,exclude); if(s>-Infinity) return s; }   // exclude the car so it doesn't read its own roof
+  if(typeof surfaceTopAt==='function'){ const s=surfaceTopAt(x,z,exclude,true); if(s>-Infinity) return s; }   // exclude the car (own roof) AND dynamic props (build 723: don't ride up on barrels)
   return (typeof terrainHeightAt==='function') ? terrainHeightAt(x,z) : 0;
 }
 const _carHalfV = new THREE.Vector3();
 function _carExtents(o){   // half-extents of the vehicle (world AABB if known, else its scale)
   if(o.userData.box && !o.userData.box.isEmpty()){ o.userData.box.getSize(_carHalfV); return { hw:_carHalfV.x/2||0.5, hh:_carHalfV.y/2||0.5, hd:_carHalfV.z/2||0.5 }; }
   const s=o.scale; return { hw:Math.abs(s.x)/2||0.5, hh:Math.abs(s.y)/2||0.5, hd:Math.abs(s.z)/2||0.5 };
+}
+// build 723: the car is kinematic (no Rapier body), so dynamic props can't see it. Manually shove any dynamic prop the car
+// drives into — along the travel direction + away from the car — scaled by speed and the prop's mass, so barrels go flying.
+const _carShoveDir = { x:0, y:0, z:0 };
+function _carShoveDynamics(o, speed, tx, tz, half, dt){   // tx,tz = unit TRAVEL direction (forward * sign(speed))
+  if(typeof dynamicProps==='undefined' || !dynamicProps.length) return;
+  const sp = Math.abs(speed); if(sp < 1.2) return;        // must be moving to shove (so a parked car rests against them)
+  const cx=o.position.x, cy=o.position.y, cz=o.position.z;
+  const reach = Math.max(half.hw, half.hd) + 1.1, reach2 = reach*reach;
+  for(const p of dynamicProps){
+    const b = p.userData && p.userData.phys && p.userData.phys.body; if(!b) continue;
+    if(typeof heldProp!=='undefined' && p===heldProp) continue;   // not the one you're carrying
+    const dx=p.position.x-cx, dz=p.position.z-cz, dy=p.position.y-cy;
+    if(Math.abs(dy) > half.hh+1.6) continue;              // out of the car's vertical band
+    const d2=dx*dx+dz*dz; if(d2 > reach2) continue;       // out of footprint reach
+    if(dx*tx + dz*tz < -0.3) continue;                    // behind the travel direction — don't drag it
+    const d=Math.sqrt(d2)||1e-4, nx=dx/d, nz=dz/d;
+    _carShoveDir.x = tx*0.65 + nx*0.55; _carShoveDir.y = 0; _carShoveDir.z = tz*0.65 + nz*0.55;   // along travel + away from the car
+    const m = p.userData.mass||1;
+    if(typeof pushDynamic==='function') pushDynamic(p, _carShoveDir, sp*m*14*dt, p.position);   // force-like (dt-scaled); pushDynamic adds an upward bias for the launch arc
+  }
 }
 // True if a wall is within `dist` ahead of the car along the world-axis unit dir (dx,dz). Three rays across the car's
 // width, fired from its leading edge (so they start past the player capsule pinned at the centre).
@@ -14660,6 +14681,7 @@ function driveUpdate(dt){
   if(mvz!==0 && _carWall(o, 0, Math.sign(mvz), Math.abs(mvz), _h)) mvz = 0;
   o.position.x += mvx; o.position.z += mvz;
   if(mvx===0 && mvz===0 && Math.abs(r.speed)>1) o.userData.carSpeed = r.speed * 0.2;   // bonk: nearly stopped by a wall
+  if(typeof NET==='undefined' || NET.mode!=='client'){ const _sgn=Math.sign(r.speed)||1; _carShoveDynamics(o, r.speed, fx*_sgn, fz*_sgn, _h, dt); }   // build 723: host/solo authors physics — knock dynamic props (barrels) flying when we drive into them
   // build 717: ramp-aware vertical — sample the ground under the car's 4 corners, TILT the body to the surface (so the
   // ramp doesn't clip through the mesh), and give it gravity + a launch so it actually flies off a ramp edge.
   const _hd=_h.hd, _hw=_h.hw, _rx=-fz, _rz=fx;   // right vector = forward rotated 90°
@@ -15307,7 +15329,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 722 · 2026-06-28';
+const BUILD_VERSION = 'build 723 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17547,7 +17569,7 @@ function _surfCull(x, z){
   }
   return out;
 }
-function surfaceTopAt(x, z, exclude){
+function surfaceTopAt(x, z, exclude, skipDynamic){
   // highest collider surface directly under (x,z); -Infinity if nothing there. `exclude` (build 710) drops one object
   // (and its children) from the result — a driving vehicle must not read its OWN roof as the ground, or it climbs itself.
   // Dynamic props are included so the player can stand on / walk up their real (possibly tilted)
@@ -17560,7 +17582,7 @@ function surfaceTopAt(x, z, exclude){
   const _ex = exclude ? (h)=>{ let o=h.object; while(o){ if(o===exclude) return true; o=o.parent; } return false; } : null;
   const hits = _downRay.intersectObjects(_surfCull(x,z), true);   // only colliders whose footprint is under (x,z)
   for(const h of hits){ if(_ex && _ex(h)) continue; if(h.point.y > top) top = h.point.y; }
-  if(dynamicProps.length){
+  if(dynamicProps.length && !skipDynamic){   // build 723: a driving car ignores dynamic props as ground (it plows through + shoves them, instead of riding up and launching)
     const list = heldProp ? dynamicProps.filter(o=>o!==heldProp) : dynamicProps;   // never let the player stand on / collide with the object they're carrying
     const dh = _downRay.intersectObjects(list, true);
     for(const h of dh){ if(_ex && _ex(h)) continue; if(h.point.y > top) top = h.point.y; }

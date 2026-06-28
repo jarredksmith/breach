@@ -58,7 +58,7 @@ assert(/if\(drivingCar\)\{ drivingCar=null; _carReturn=null; \}/.test(extractFun
 assert(/if\(o\.userData && o\.userData\.vehicle\) return;/.test(extractFunction('addStaticColliderFor')), 'a vehicle gets no static collider (it is moved kinematically)');
 
 // --- build 710 fix: the ground query excludes the car so it can't read its own roof and climb into the sky ---
-assert(/function surfaceTopAt\(x, z, exclude\)\{/.test(src), 'surfaceTopAt takes an exclude');
+assert(/function surfaceTopAt\(x, z, exclude, skipDynamic\)\{/.test(src), 'surfaceTopAt takes an exclude');
 assert(/const _ex = exclude \? \(h\)=>\{ let o=h\.object; while\(o\)\{ if\(o===exclude\) return true; o=o\.parent; \} return false; \} : null;/.test(src), 'exclude drops an object (and its children) from the surface result');
 assert(/const gC=_carGroundY\(o\.position\.x, o\.position\.z, o\);/.test(src), 'driveUpdate samples its ground excluding the car itself');
 // build 717: ramp-aware vertical — 4-corner ground sample, surface tilt, gravity + launch
@@ -123,4 +123,31 @@ assert(/const _ch=Math\.max\(1\.2, _ex\.hh\*1\.8 \+ 1\.5 \+ \(\+_vv\.camHigh\|\|
 assert(/if\(V\.camDist\) e\.veh\.camDist=V\.camDist; if\(V\.camHigh\) e\.veh\.camHigh=V\.camHigh; if\(V\.rideHeight\) e\.veh\.rideHeight=V\.rideHeight;/.test(src), 'camera + ride trims serialized');
 assert(/row\('Camera back \(±m\)','camDist'/.test(src) && /row\('Camera up \(±m\)','camHigh'/.test(src) && /row\('Ride height \(±m\)','rideHeight'/.test(src), 'editor exposes camera + ride-height rows');
 
-done('build 709-722: drivable vehicles — drive / collision / ramps / units / boost / arrow / model facing / pivot / fit-to-model cam + ride');
+// --- build 723: vehicle physics — ignore dynamic props as ground (no fling) + shove them out of the way ---
+const st = extractFunction('surfaceTopAt');
+assert(/function surfaceTopAt\(x, z, exclude, skipDynamic\)\{/.test(st), 'surfaceTopAt takes a skipDynamic flag');
+assert(/if\(dynamicProps\.length && !skipDynamic\)\{/.test(st), 'skipDynamic drops dynamic props from the surface result');
+assert(/const s=surfaceTopAt\(x,z,exclude,true\);/.test(extractFunction('_carGroundY')), 'the car ground query skips dynamic props (so it never rides up + launches off a barrel)');
+const sh = extractFunction('_carShoveDynamics');
+assert(/const b = p\.userData && p\.userData\.phys && p\.userData\.phys\.body; if\(!b\) continue;/.test(sh), 'only dynamic props with a physics body are shoved');
+assert(/if\(sp < 1\.2\) return;/.test(sh), 'a near-stopped car does not shove (so it can rest against props)');
+assert(/if\(dx\*tx \+ dz\*tz < -0\.3\) continue;/.test(sh), 'props behind the travel direction are not dragged');
+assert(/pushDynamic\(p, _carShoveDir, sp\*m\*14\*dt, p\.position\)/.test(sh), 'shove impulse scales with speed * mass (heavier/faster = bigger launch)');
+assert(/if\(typeof NET==='undefined' \|\| NET\.mode!=='client'\)\{ const _sgn=Math\.sign\(r\.speed\)\|\|1; _carShoveDynamics\(o, r\.speed, fx\*_sgn, fz\*_sgn, _h, dt\); \}/.test(du), 'the host/solo shoves dynamic props each frame along the travel direction');
+
+// executable: the shove direction points roughly along travel and away from the car, never backward into it
+{ const shove = new Function('dynamicProps','heldProp','pushDynamic',
+    'const _carShoveDir={x:0,y:0,z:0};\n' + extractFunction('_carShoveDynamics') + '\nreturn _carShoveDynamics;');
+  let captured=null;   // a fake world: one barrel 1m in front of the car (moving +X), and a capturing pushDynamic
+  const props=[{ position:{x:1,y:0,z:0}, userData:{ phys:{ body:{} }, mass:1 } }];
+  const pd=(p,dir,strength)=>{ captured={ x:dir.x, z:dir.z, strength }; };
+  const fn = shove(props, null, pd);
+  fn({ position:{x:0,y:0,z:0} }, 10, 1, 0, { hw:0.6, hh:0.5, hd:1.2 }, 1/60);
+  assert(captured && captured.x>0, 'a barrel ahead is pushed forward (+X), not backward');
+  assert(captured.strength>0, 'the shove has positive strength when moving');
+  // a barrel directly behind the travel direction is left alone
+  captured=null; const back=[{ position:{x:-1,y:0,z:0}, userData:{ phys:{ body:{} }, mass:1 } }];
+  shove(back, null, pd)({ position:{x:0,y:0,z:0} }, 10, 1, 0, { hw:0.6, hh:0.5, hd:1.2 }, 1/60);
+  assert(captured===null, 'a barrel behind the car is not dragged along'); }
+
+done('build 709-723: drivable vehicles — drive / collision / ramps / units / boost / arrow / facing / pivot / fit-to-model cam+ride / physics shove');
