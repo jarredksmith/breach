@@ -203,4 +203,12 @@ assert(/camera\.fov \+= \(_fovT-camera\.fov\)\*Math\.min\(1,dt\*4\); camera\.upd
 assert(/if\(_shk>0\.0006\)\{ camera\.rotation\.x \+= \(Math\.random\(\)-0\.5\)\*_shk; camera\.rotation\.y \+= \(Math\.random\(\)-0\.5\)\*_shk; \}/.test(src), 'a faint shake scales with speed/boost');
 assert(/camera\.fov=worldCfg\.fov; camera\.updateProjectionMatrix\(\); \}   \/\/ build 730: restore the normal FOV/.test(extractFunction('exitCar')), 'exiting restores the normal FOV');
 
-done('build 709-730: drivable vehicles — … / suspension lean / speed-FOV + shake');
+// --- build 733: impact feedback — a hard head-on wall hit jolts/thuds/throws debris (not a silent stop) ---
+assert(/if\(mvx===0 && mvz===0 && _imp0>5 && o\.userData\._hitCd<=0\)\{ o\.userData\._hitCd=0\.35; o\.userData\.carSpeed=r\.speed\*0\.1; r\.speed=o\.userData\.carSpeed; _carImpactFx\(o, _imp0\); \}/.test(du), 'a hard head-on hit fires impact FX once per hit (cooldown)');
+const cfx = extractFunction('_carImpactFx');
+assert(/o\.userData\.hitShake=Math\.max\(o\.userData\.hitShake\|\|0, 0\.02 \+ f\*0\.06\);/.test(cfx) && /_carThud\(f\)/.test(cfx), 'impact jolts the camera + thuds, scaled by impact speed');
+assert(/for\(let i=0;i<4;i\+\+\) _spawnDust\(nx, o\.position\.y\+0\.3, nz/.test(cfx), 'impact throws a debris burst at the nose');
+assert(/o\.userData\.hitShake=_hs\*\(1-Math\.min\(1,dt\*5\)\);/.test(src), 'the impact jolt decays in the chase cam');
+assert(/o\.userData\.hitShake=0; o\.userData\._hitCd=0;/.test(extractFunction('enterCar')), 'impact state resets on enter');
+
+done('build 709-733: drivable vehicles — … / suspension lean / speed-FOV+shake / impact feedback');

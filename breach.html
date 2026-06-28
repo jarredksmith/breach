@@ -14621,6 +14621,29 @@ function _updateDust(dt,camPos){
   }
 }
 function _clearDust(){ if(!_dustPool) return; for(const m of _dustPool){ m.visible=false; m.material.opacity=0; if(m.userData.dust) m.userData.dust.life=0; } }
+// build 733: impact feedback — a crunchy thud (noise burst + a low sine thump) when the car hits a wall hard.
+function _carThud(vol){
+  if(typeof actx==='undefined' || !actx || !sfxBus) return;
+  try{ const t=actx.currentTime;
+    const n=Math.floor(actx.sampleRate*0.18), buf=actx.createBuffer(1,n,actx.sampleRate), d=buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+    const src=actx.createBufferSource(); src.buffer=buf;
+    const lp=actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=220+vol*260;
+    const g=actx.createGain(); g.gain.value=Math.min(0.6, 0.2+vol*0.5);
+    src.connect(lp).connect(g).connect(sfxBus); src.start(t);
+    const o=actx.createOscillator(); o.type='sine'; o.frequency.setValueAtTime(120,t); o.frequency.exponentialRampToValueAtTime(45,t+0.18);
+    const og=actx.createGain(); og.gain.setValueAtTime(Math.min(0.5, 0.15+vol*0.4),t); og.gain.exponentialRampToValueAtTime(0.0001,t+0.22);
+    o.connect(og).connect(sfxBus); o.start(t); o.stop(t+0.24);
+  }catch(e){}
+}
+function _carImpactFx(o, imp){
+  const f=Math.min(1, imp/16);
+  o.userData.hitShake=Math.max(o.userData.hitShake||0, 0.02 + f*0.06);   // camera jolt — decays in the chase cam
+  _carThud(f);
+  const cy=(o.userData.carYaw!=null)?o.userData.carYaw:o.rotation.y, hx=-Math.sin(cy), hz=-Math.cos(cy), ex=_carExtents(o);
+  const nx=o.position.x+hx*ex.hd, nz=o.position.z+hz*ex.hd;   // a debris burst at the nose
+  for(let i=0;i<4;i++) _spawnDust(nx, o.position.y+0.3, nz, (Math.random()-0.5)*4, (Math.random()-0.5)*4);
+}
 function _driveHudEl(){
   let el=document.getElementById('driveHud');
   if(!el){ el=document.createElement('div'); el.id='driveHud';
@@ -14636,6 +14659,7 @@ function enterCar(o){
   o.userData.carYaw = o.rotation.y + (o.userData.vehicle.modelYaw||0)*RAD;
   o.userData.carVelYaw = o.userData.carYaw;   // build 725: travel direction starts aligned with the heading (no drift until you turn)
   o.userData.leanRoll=0; o.userData.leanPitch=0; o.userData._prevSpeed=0;   // build 729: suspension lean starts neutral
+  o.userData.hitShake=0; o.userData._hitCd=0;   // build 733: impact feedback state
   { o.updateMatrixWorld(true); const _bb=new THREE.Box3().setFromObject(o); o.userData.carBaseOff = _bb.isEmpty()?0:(o.position.y - _bb.min.y); }   // build 722: how far the origin sits above the model's lowest point (so wheels rest on the ground)
   _carReturn = { x:player.pos.x, y:player.pos.y, z:player.pos.z, yaw:player.yaw, pitch:player.pitch };
   player.vel.set(0,0,0); sliding=false; firing=false; ads=false;
@@ -14775,8 +14799,12 @@ function driveUpdate(dt){
   const _h = _carExtents(o);
   if(mvx!==0 && _carWall(o, Math.sign(mvx), 0, Math.abs(mvx), _h)) mvx = 0;
   if(mvz!==0 && _carWall(o, 0, Math.sign(mvz), Math.abs(mvz), _h)) mvz = 0;
+  const _imp0=Math.abs(r.speed);   // speed carried into the wall (for impact feedback)
   o.position.x += mvx; o.position.z += mvz;
   if(mvx===0 && mvz===0 && Math.abs(r.speed)>1) o.userData.carSpeed = r.speed * 0.2;   // bonk: nearly stopped by a wall
+  // build 733: a HARD head-on hit (both axes blocked at speed) jolts the camera, thuds, and throws debris — once per hit
+  o.userData._hitCd=Math.max(0,(o.userData._hitCd||0)-dt);
+  if(mvx===0 && mvz===0 && _imp0>5 && o.userData._hitCd<=0){ o.userData._hitCd=0.35; o.userData.carSpeed=r.speed*0.1; r.speed=o.userData.carSpeed; _carImpactFx(o, _imp0); }
   if(typeof NET==='undefined' || NET.mode!=='client'){ const _sgn=Math.sign(r.speed)||1; _carShoveDynamics(o, r.speed, fx*_sgn, fz*_sgn, _h, dt); }   // build 723: host/solo authors physics — knock dynamic props (barrels) flying when we drive into them
   // build 717: ramp-aware vertical — sample the ground under the car's 4 corners, TILT the body to the surface (so the
   // ramp doesn't clip through the mesh), and give it gravity + a launch so it actually flies off a ramp edge.
@@ -15466,7 +15494,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 732 · 2026-06-28';
+const BUILD_VERSION = 'build 733 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18679,6 +18707,8 @@ function loop(){
     camera.fov += (_fovT-camera.fov)*Math.min(1,dt*4); camera.updateProjectionMatrix();
     const _shk=_sf*0.0045 + _bst*0.006;
     if(_shk>0.0006){ camera.rotation.x += (Math.random()-0.5)*_shk; camera.rotation.y += (Math.random()-0.5)*_shk; }
+    const _hs=o.userData.hitShake||0;   // build 733: impact jolt, decays
+    if(_hs>0.001){ camera.rotation.x += (Math.random()-0.5)*_hs*2; camera.rotation.y += (Math.random()-0.5)*_hs*2; camera.rotation.z += (Math.random()-0.5)*_hs; o.userData.hitShake=_hs*(1-Math.min(1,dt*5)); }
   } else if(editorOpen && editorTopView){
     // locked orthographic straight-down view; pan with drag, zoom with wheel
     scene.fog = null;   // fog would wash out the whole overhead view
