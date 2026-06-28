@@ -14525,8 +14525,8 @@ function exitCar(){
   if(_carReturn){ player.yaw=_carReturn.yaw; player.pitch=_carReturn.pitch; }
   if(SFX.swap) SFX.swap();
 }
-function _carGroundY(x,z){
-  if(typeof surfaceTopAt==='function'){ const s=surfaceTopAt(x,z); if(s>-Infinity) return s; }
+function _carGroundY(x,z,exclude){
+  if(typeof surfaceTopAt==='function'){ const s=surfaceTopAt(x,z,exclude); if(s>-Infinity) return s; }   // exclude the car so it doesn't read its own roof
   return (typeof terrainHeightAt==='function') ? terrainHeightAt(x,z) : 0;
 }
 function driveUpdate(dt){
@@ -14544,7 +14544,7 @@ function driveUpdate(dt){
   const fx=-Math.sin(o.rotation.y), fz=-Math.cos(o.rotation.y);
   o.position.x += fx * r.speed * dt;
   o.position.z += fz * r.speed * dt;
-  o.position.y = _carGroundY(o.position.x, o.position.z);   // sit on the ground / ramps
+  o.position.y = _carGroundY(o.position.x, o.position.z, o);   // sit on the ground / ramps (excluding the car itself)
   o.updateMatrixWorld(true);
   player.pos.set(o.position.x, o.position.y+EYE, o.position.z); player.vel.set(0,0,0); player.onGround=true; player.yaw=o.rotation.y;
 }
@@ -15154,7 +15154,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 709 · 2026-06-26';
+const BUILD_VERSION = 'build 710 · 2026-06-26';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17394,8 +17394,9 @@ function _surfCull(x, z){
   }
   return out;
 }
-function surfaceTopAt(x, z){
-  // highest collider surface directly under (x,z); -Infinity if nothing there.
+function surfaceTopAt(x, z, exclude){
+  // highest collider surface directly under (x,z); -Infinity if nothing there. `exclude` (build 710) drops one object
+  // (and its children) from the result — a driving vehicle must not read its OWN roof as the ground, or it climbs itself.
   // Dynamic props are included so the player can stand on / walk up their real (possibly tilted)
   // surfaces — a tilted dynamic box reads as a ramp, a steep face reads as a wall, just like static
   // geometry. Their meshes are transformed by the physics step, so the raycast tracks them.
@@ -17403,12 +17404,13 @@ function surfaceTopAt(x, z){
   _downRay.set(_downOrigin, _downDir);
   _downRay.far = 600;
   let top = -Infinity;
+  const _ex = exclude ? (h)=>{ let o=h.object; while(o){ if(o===exclude) return true; o=o.parent; } return false; } : null;
   const hits = _downRay.intersectObjects(_surfCull(x,z), true);   // only colliders whose footprint is under (x,z)
-  for(const h of hits){ if(h.point.y > top) top = h.point.y; }
+  for(const h of hits){ if(_ex && _ex(h)) continue; if(h.point.y > top) top = h.point.y; }
   if(dynamicProps.length){
     const list = heldProp ? dynamicProps.filter(o=>o!==heldProp) : dynamicProps;   // never let the player stand on / collide with the object they're carrying
     const dh = _downRay.intersectObjects(list, true);
-    for(const h of dh){ if(h.point.y > top) top = h.point.y; }
+    for(const h of dh){ if(_ex && _ex(h)) continue; if(h.point.y > top) top = h.point.y; }
   }
   // Safety net: ONLY when the downward ray found nothing at all (slipped through an open/awkward model
   // top). In that case fall back to the bounding-box top of an UPRIGHT prop whose footprint covers (x,z).
@@ -17416,6 +17418,7 @@ function surfaceTopAt(x, z){
   // model where you stand on a lower part into its overall top, turning it into a wall.
   if(top === -Infinity){
     for(const c of colliders){
+      if(c===exclude) continue;
       const bs = (c.userData && (c.userData.boxes || (c.userData.box && [c.userData.box]))); if(!bs) continue;
       const src = c.userData.src;
       if(src==='sphere' || src==='cone') continue;            // curved/pointed top -> trust the ray

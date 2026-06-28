@@ -38,6 +38,11 @@ assert(/\} else if\(drivingCar\)\{[\s\S]*?camera\.position\.set\(o\.position\.x 
 assert(/if\(drivingCar\)\{ drivingCar=null; _carReturn=null; \}/.test(extractFunction('startGame')), 'never start a round still driving');
 assert(/if\(o\.userData && o\.userData\.vehicle\) return;/.test(extractFunction('addStaticColliderFor')), 'a vehicle gets no static collider (it is moved kinematically)');
 
+// --- build 710 fix: the ground query excludes the car so it can't read its own roof and climb into the sky ---
+assert(/function surfaceTopAt\(x, z, exclude\)\{/.test(src), 'surfaceTopAt takes an exclude');
+assert(/const _ex = exclude \? \(h\)=>\{ let o=h\.object; while\(o\)\{ if\(o===exclude\) return true; o=o\.parent; \} return false; \} : null;/.test(src), 'exclude drops an object (and its children) from the surface result');
+assert(/o\.position\.y = _carGroundY\(o\.position\.x, o\.position\.z, o\);/.test(src), 'driveUpdate excludes the car from its own ground query');
+
 // --- serialize + restore (compact veh) at all three prop-load sites ---
 assert(/if\(o\.userData\.vehicle\)\{ const V=o\.userData\.vehicle; e\.veh=\{ maxSpeed:V\.maxSpeed, accel:V\.accel, turn:V\.turn, reverse:V\.reverse \}; \}/.test(src), 'vehicle serialized');
 eq(src.split('if(p.veh) vehicleApply(obj, p.veh);').length - 1, 3, 'vehicle restored at all three prop-load sites');
