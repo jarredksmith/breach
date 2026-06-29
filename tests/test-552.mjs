@@ -264,4 +264,15 @@ assert(/row\('Ram damage','ram', 0, 300, 5, 1\)/.test(src), 'editor exposes a Ra
   assert(ram(2,50,20)===0, 'a gentle bump does no damage');
   assert(ram(17,50,20) > ram(8,50,20) && ram(8,50,20)>0, 'faster = more damage'); }
 
-done('build 709-744: drivable vehicles — … / openings ceiling / drive anims / no-climb / ram damage');
+// --- build 745: cockpit (driver POV) camera + seat offsets + C toggle ---
+assert(/camView:\(v\.camView==='cockpit'\?'cockpit':'chase'\), seatF:\(\+v\.seatF\|\|0\), seatU:\(v\.seatU==null\?1:\+v\.seatU\), seatS:\(\+v\.seatS\|\|0\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores the camera view + seat offsets');
+assert(/function _carViewMode\(o\)\{ if\(_carViewOverride\) return _carViewOverride;/.test(src), 'the view mode prefers the session override, else the vehicle default');
+assert(/if\(_carViewMode\(o\)==='cockpit'\)\{/.test(src), 'the camera has a cockpit branch');
+assert(/_seatV\.set\(_sS, _sU, -_sF\)\.applyQuaternion\(_camFrameQ\);/.test(src) && /camera\.position\.set\(o\.position\.x\+_seatV\.x, o\.position\.y\+_seatV\.y, o\.position\.z\+_seatV\.z\);/.test(src), 'the cockpit camera sits at the seat offset inside the car (in the body tilt frame)');
+assert(/camera\.rotation\.x=player\.pitch; camera\.rotation\.z=_cr\*0\.4;/.test(src), 'cockpit is free-look (mouse), horizon leans a touch with body roll');
+assert(/if\(e\.code==='KeyC' && !e\.repeat && drivingCar[\s\S]*?_carViewOverride = \(_carViewMode\(drivingCar\)==='cockpit'\)\?'chase':'cockpit';/.test(src), 'C toggles the view live while driving');
+assert(/_carViewOverride=null;/.test(extractFunction('exitCar')), 'the view override resets on exit (next car uses its default)');
+assert(/if\(V\.camView==='cockpit'\) e\.veh\.camView='cockpit';/.test(src) && /if\(V\.seatU!=null && V\.seatU!==1\) e\.veh\.seatU=V\.seatU;/.test(src), 'cockpit view + seat offsets serialize');
+assert(/\[\['chase','Chase'\],\['cockpit','Cockpit'\]\]/.test(src) && /row\('Seat forward \(m\)','seatF'/.test(src), 'editor exposes the view toggle + seat sliders');
+
+done('build 709-745: drivable vehicles — … / drive anims / no-climb / ram damage / cockpit view');

@@ -9051,6 +9051,7 @@ addEventListener('keydown', e=>{
     return;
   }
   if(e.code==='KeyM' && !e.repeat){ if(gameOn && !editorOpen && !shopOpen && !chatOpen && !radialOpen && !choosingUpgrade){ openBigMap(); e.preventDefault(); return; } }
+  if(e.code==='KeyC' && !e.repeat && drivingCar && !editorOpen && !shopOpen && !chatOpen){ _carViewOverride = (_carViewMode(drivingCar)==='cockpit')?'chase':'cockpit'; e.preventDefault(); return; }   // build 745: toggle chase <-> cockpit view while driving
   if(e.code==='KeyN' && !e.repeat){ navOverlayToggle(); e.preventDefault(); return; }   // debug: toggle the bot nav grid overlay
   if(editorOpen) return;   // ignore gameplay keys while editing
   if(e.code==='KeyR') reload();
@@ -14556,6 +14557,9 @@ function turretFire(){
 // co-op sync.) The movement is a pure function so it's unit-testable without a browser.
 let drivingCar = null, _carReturn = null;
 const _carQuat = new THREE.Quaternion(), _carEuler = new THREE.Euler(0,0,0,'YXZ'), _carModelQ = new THREE.Quaternion();   // build 720: reusable temps for the orientation compose
+const _camFrameQ = new THREE.Quaternion(), _camFrameE = new THREE.Euler(0,0,0,'YXZ'), _seatV = new THREE.Vector3();   // build 745: cockpit camera temps
+let _carViewOverride = null;   // build 745: session toggle (C) overriding the vehicle's default camera view ('chase' | 'cockpit')
+function _carViewMode(o){ if(_carViewOverride) return _carViewOverride; const v=o&&o.userData&&o.userData.vehicle; return (v&&v.camView==='cockpit')?'cockpit':'chase'; }
 function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   maxSpeed:Math.max(2, +v.maxSpeed||16), accel:Math.max(1, +v.accel||18),
   turn:Math.max(10, +v.turn||120), reverse:Math.max(1, +v.reverse||7), units:(v.units==='mph'?'mph':'kph'),
@@ -14566,7 +14570,8 @@ function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   lean:(v.lean==null?0.5:Math.max(0, Math.min(2, +v.lean||0))),
   dust:(v.dust==null?1:Math.max(0, Math.min(2, +v.dust||0))), skid:(v.skid==null?1:Math.max(0, Math.min(2, +v.skid||0))),
   animIdle:(''+(v.animIdle||'')), animFwd:(''+(v.animFwd||'')), animBack:(''+(v.animBack||'')), animLeft:(''+(v.animLeft||'')), animRight:(''+(v.animRight||'')),
-  ram:(v.ram==null?50:Math.max(0, Math.min(500, +v.ram||0))) }; }   // 741: drive-state anims; 744: ram damage to enemies/bots/rivals (0=off, default on)
+  ram:(v.ram==null?50:Math.max(0, Math.min(500, +v.ram||0))),
+  camView:(v.camView==='cockpit'?'cockpit':'chase'), seatF:(+v.seatF||0), seatU:(v.seatU==null?1:+v.seatU), seatS:(+v.seatS||0) }; }   // 744: ram damage; 745: cockpit (driver POV) view + seat offsets
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14739,7 +14744,7 @@ function _driveHudEl(){
       +'<text class="dhNum" id="dhVal" x="60" y="66">0</text>'
       +'<text class="dhUnitT" id="dhUnit" x="60" y="84">km/h</text>'
       +'</svg>'
-      +'<div id="dhBoost" class="dhBoost"></div><div class="dhExit">[E] / [Esc] exit</div>';
+      +'<div id="dhBoost" class="dhBoost"></div><div class="dhExit">[C] view · [E] / [Esc] exit</div>';
     document.body.appendChild(el); }
   return el;
 }
@@ -14762,6 +14767,7 @@ function enterCar(o){
 }
 function exitCar(){
   if(!drivingCar) return;
+  _carViewOverride=null;   // build 745: next car starts at its own default view
   const o=drivingCar; drivingCar=null; if(o.userData) o.userData.carSpeed=0;
   _engStop(); { const _dh=document.getElementById('driveHud'); if(_dh) _dh.style.display='none'; const _cx=document.getElementById('crosshair'); if(_cx) _cx.style.display=''; }   // build 715/738: hide HUD; restore crosshair
   const side=new THREE.Vector3(Math.cos(o.rotation.y),0,-Math.sin(o.rotation.y));   // step out to the side
@@ -15654,7 +15660,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 744 · 2026-06-28';
+const BUILD_VERSION = 'build 745 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -18856,12 +18862,21 @@ function loop(){
     gun.visible=false;
     const o=drivingCar, yaw=player.yaw, fx=-Math.sin(yaw), fz=-Math.cos(yaw);   // build 711: orbit with the mouse (player.yaw), the car steers to follow
     const _vv=o.userData.vehicle||{}, _pv=+_vv.pivot||0, _cy=(o.userData.carYaw!=null?o.userData.carYaw:o.rotation.y);   // build 721: orbit the pivot/centre, not the mesh origin
-    const _tx=o.position.x - Math.sin(_cy)*_pv, _tz=o.position.z - Math.cos(_cy)*_pv;
-    const _ex=_carExtents(o);   // build 722: fit the chase cam to the model's size (so a big model isn't inside it), then trim with camDist/camHigh
-    const _cd=Math.max(2.5, _ex.hd*2.4 + _ex.hw*0.5 + 4 + (+_vv.camDist||0));
-    const _ch=Math.max(1.2, _ex.hh*1.8 + 1.5 + (+_vv.camHigh||0));
-    camera.position.set(_tx - fx*_cd, o.position.y + _ch, _tz - fz*_cd);
-    camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=-0.28; camera.rotation.z=0;
+    if(_carViewMode(o)==='cockpit'){   // build 745: driver's POV — camera seated inside the model, looking where you aim (the car follows)
+      const _cp=o.userData.carPitch||0, _cr=o.userData.carRoll||0;
+      _camFrameE.set(_cp, _cy, _cr); _camFrameQ.setFromEuler(_camFrameE);   // the car's tilt frame (no modelYaw spin), so the seat rides the body
+      const _sF=(_vv.seatF!=null?+_vv.seatF:0.2), _sU=(_vv.seatU!=null?+_vv.seatU:1), _sS=(+_vv.seatS||0);
+      _seatV.set(_sS, _sU, -_sF).applyQuaternion(_camFrameQ);
+      camera.position.set(o.position.x+_seatV.x, o.position.y+_seatV.y, o.position.z+_seatV.z);
+      camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=player.pitch; camera.rotation.z=_cr*0.4;   // free look; horizon leans a touch with the body roll
+    } else {
+      const _tx=o.position.x - Math.sin(_cy)*_pv, _tz=o.position.z - Math.cos(_cy)*_pv;
+      const _ex=_carExtents(o);   // build 722: fit the chase cam to the model's size (so a big model isn't inside it), then trim with camDist/camHigh
+      const _cd=Math.max(2.5, _ex.hd*2.4 + _ex.hw*0.5 + 4 + (+_vv.camDist||0));
+      const _ch=Math.max(1.2, _ex.hh*1.8 + 1.5 + (+_vv.camHigh||0));
+      camera.position.set(_tx - fx*_cd, o.position.y + _ch, _tz - fz*_cd);
+      camera.rotation.order='YXZ'; camera.rotation.y=yaw; camera.rotation.x=-0.28; camera.rotation.z=0;
+    }
     // build 730: sense of speed — the FOV eases wider with speed (and a kick on boost), plus a faint shake at pace
     const _spd=Math.abs(o.userData.carSpeed||0), _msp=Math.max(1,+_vv.maxSpeed||16), _sf=Math.min(1,_spd/_msp), _bst=(o.userData.boostT>0)?1:0;
     const _baseFov=(typeof worldCfg!=='undefined'&&worldCfg.fov)?worldCfg.fov:78, _fovT=_baseFov + _sf*12 + _bst*9;
@@ -20181,7 +20196,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; if(V.lean!=null && V.lean!==0.5) e.veh.lean=V.lean; if(V.dust!=null && V.dust!==1) e.veh.dust=V.dust; if(V.skid!=null && V.skid!==1) e.veh.skid=V.skid; if(V.animIdle) e.veh.animIdle=V.animIdle; if(V.animFwd) e.veh.animFwd=V.animFwd; if(V.animBack) e.veh.animBack=V.animBack; if(V.animLeft) e.veh.animLeft=V.animLeft; if(V.animRight) e.veh.animRight=V.animRight; if(V.ram!=null && V.ram!==50) e.veh.ram=V.ram; }   // build 709-744: drivable vehicle + tuning + anim clips + ram damage
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; if(V.lean!=null && V.lean!==0.5) e.veh.lean=V.lean; if(V.dust!=null && V.dust!==1) e.veh.dust=V.dust; if(V.skid!=null && V.skid!==1) e.veh.skid=V.skid; if(V.animIdle) e.veh.animIdle=V.animIdle; if(V.animFwd) e.veh.animFwd=V.animFwd; if(V.animBack) e.veh.animBack=V.animBack; if(V.animLeft) e.veh.animLeft=V.animLeft; if(V.animRight) e.veh.animRight=V.animRight; if(V.ram!=null && V.ram!==50) e.veh.ram=V.ram; if(V.camView==='cockpit') e.veh.camView='cockpit'; if(V.seatF) e.veh.seatF=V.seatF; if(V.seatU!=null && V.seatU!==1) e.veh.seatU=V.seatU; if(V.seatS) e.veh.seatS=V.seatS; }   // build 709-745: drivable vehicle + tuning + ram + cockpit view
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22892,6 +22907,15 @@ function renderEditorFields(){
           row('Camera back (±m)','camDist', -10, 40, 0.5, 1);
           row('Camera up (±m)','camHigh', -8, 30, 0.5, 1);
           row('Ride height (±m)','rideHeight', -6, 6, 0.05, 1);
+          // build 745: camera view — chase or cockpit (driver POV), with seat offsets to place the camera inside the model
+          { const cvh=document.createElement('div'); cvh.className='hint'; cvh.style.margin='8px 0 1px'; cvh.innerHTML='<b>Camera view</b> — Chase (3rd person) or Cockpit (driver POV). Press <b>C</b> while driving to flip. Cockpit uses the seat offsets to sit inside the model.'; vBody.appendChild(cvh); }
+          { const seg=document.createElement('div'); seg.style.cssText='display:flex;gap:4px;margin-top:4px;';
+            [['chase','Chase'],['cockpit','Cockpit']].forEach(o=>{ const on=((V.camView||'chase')===o[0]); const b=document.createElement('button'); b.textContent=o[1]; b.style.cssText='flex:1;padding:3px 6px;font-size:11px;border-radius:5px;cursor:pointer;border:1px solid '+(on?'#7ad7ff':'rgba(122,215,255,0.3)')+';background:'+(on?'rgba(122,215,255,0.22)':'transparent')+';color:'+(on?'#eafff7':'#9fc6e6')+';'; b.onclick=()=>{ pushUndoSnapshot(); V.camView=o[0]; renderEditorFields(); }; seg.appendChild(b); }); vBody.appendChild(seg); }
+          if((V.camView||'chase')==='cockpit'){
+            row('Seat forward (m)','seatF', -4, 4, 0.05, 1);
+            row('Seat up (m)','seatU', -2, 4, 0.05, 1);
+            row('Seat side (m)','seatS', -3, 3, 0.05, 1);
+          }
           { const bh=document.createElement('div'); bh.className='hint'; bh.style.margin='8px 0 1px'; bh.innerHTML='<b>Boost</b> — hold <b>Shift</b> while driving. Multiplier 1 = off.'; vBody.appendChild(bh); }
           row('Boost ×','boost', 1, 4, 0.05, 1);
           row('Boost time (s)','boostDur', 0.5, 15, 0.5, 1);
