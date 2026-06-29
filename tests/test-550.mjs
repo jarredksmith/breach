@@ -13,6 +13,10 @@ const ja = new Function('o','j', extractFunction('jointApply') + '\nreturn (o,j)
   eq(J.axis,'y','an invalid axis falls back to Y'); eq(J.ax,1.5,'hinge offset kept'); eq(J.to,'frame','tag anchor kept');
   assert(J.lim===true && J.min===-10 && J.max===80, 'limits carried'); eq(J.mspeed,90,'motor speed carried'); }
 { const o={ userData:{} }; const J=ja(o, { axis:'x' }); eq(J.axis,'x','a valid axis (x) is kept'); }
+// build 759: trailer self-centering strength (clamped 0..1, off by default)
+{ const o={ userData:{} }; eq(ja(o,{}).center, 0, 'no self-centering by default'); }
+{ const o={ userData:{} }; eq(ja(o,{ center:0.4 }).center, 0.4, 'tracking strength carried'); }
+{ const o={ userData:{} }; eq(ja(o,{ center:5 }).center, 1, 'tracking strength clamps to 1'); }
 
 // --- buildJoints uses the Rapier revolute API, guarded, after bodies exist ---
 const bj = extractFunction('buildJoints');
@@ -35,6 +39,11 @@ const cbf = extractFunction('createBodyFor');
 assert(/const _jointed = !!obj\.userData\.joint;/.test(cbf), 'createBodyFor detects a jointed (towed) prop');
 assert(/setLinearDamping\(_jointed\?0\.5:0\.2\)\.setAngularDamping\(_jointed\?1\.1:0\.45\)/.test(cbf), 'a jointed body gets heavier linear + angular damping');
 assert(/setRestitution\(_jointed\?0:0\.3\)/.test(cbf), 'a jointed body does not bounce on bumps');
+
+// --- build 759: trailer self-centering = a mass-scaled position spring toward the deploy angle (only without a velocity motor) ---
+assert(/else if\(J\.center>0\)\{ try\{ const m=\(o\.userData\.mass\|\|1\); joint\.configureMotorPosition\(0, J\.center\*m\*6, J\.center\*m\*2\.2\); \}/.test(bj), 'a self-centering trailer gets a mass-scaled position spring toward straight');
+assert(/if\(J\.center\) e\.j\.center=J\.center;/.test(src), 'tracking strength serializes');
+assert(/num\('Trailer tracking','center',0,1,0\.05\)/.test(src), 'the joint editor exposes a Trailer tracking control');
 
 // --- serialize + restore (compact j) at all three prop-load sites ---
 assert(/if\(o\.userData\.joint\)\{ const J=o\.userData\.joint; e\.j=\{ type:J\.type\|\|'hinge', to:J\.to\|\|'', ax:J\.ax\|\|0, ay:J\.ay\|\|0, az:J\.az\|\|0, axis:J\.axis\|\|'y' \};/.test(src), 'joint serialized compactly');

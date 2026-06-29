@@ -7153,7 +7153,8 @@ function jointApply(o, j){ if(!o||!j) return; o.userData.joint = {
   ax:+j.ax||0, ay:+j.ay||0, az:+j.az||0,
   axis:(j.axis==='x'||j.axis==='z')?j.axis:'y',
   lim:!!j.lim, min:(j.min!=null?+j.min:-90), max:(j.max!=null?+j.max:90),
-  mspeed:+j.mspeed||0, mstr:(j.mstr!=null?+j.mstr:1) }; }
+  mspeed:+j.mspeed||0, mstr:(j.mstr!=null?+j.mstr:1),
+  center:(j.center!=null?Math.max(0,Math.min(1,+j.center)):0) }; }   // build 759: trailer self-centering strength (0 = free hinge)
 function _xaEach(fn){ for(const o of propModels){ const a=o&&o.userData&&o.userData.xa; if(a&&a.on) fn(o,a); } }
 function xaCapture(){ _xaEach((o,a)=>{ a.bpx=undefined; a.ph=0; a.dir=1; a.dest=0; }); }   // deploy: recapture point A on the next frame
 function xaSnapToBase(){ _xaEach((o,a)=>{ a.ph=0; a.dir=1; a.dest=0; if(a.bpx!==undefined){ o.position.set(a.bpx,a.bpy,a.bpz); o.rotation.set(a.brx,a.bry,a.brz); if(a.bscx!==undefined) o.scale.set(a.bscx,a.bscy,a.bscz); o.updateMatrixWorld(true); if(colliders.indexOf(o)>=0||o.userData.box) refreshPropCollider(o); } }); }   // editor: show point A
@@ -15699,7 +15700,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 758 · 2026-06-29';
+const BUILD_VERSION = 'build 759 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16235,6 +16236,10 @@ function buildJoints(){
       // prismatic joints) — that's why a "limited" trailer still spun a full 360. Apply them on the joint itself instead.
       if(J.lim){ try{ let lo=(J.min||0)*RAD, hi=(J.max||0)*RAD; if(lo>hi){ const t=lo; lo=hi; hi=t; } joint.setLimits(lo, hi); }catch(e){ console.warn('joint limits unsupported', e); } }
       if(J.mspeed){ try{ joint.configureMotorVelocity((J.mspeed||0)*RAD, (J.mstr!=null?J.mstr:1)); }catch(e){} }   // powered hinge (wheel/conveyor/door-closer)
+      // build 759: trailer self-centering — a box on a vertical hinge has no tyre grip, so it swings out and stays out
+      // however heavy it is. A soft position-spring toward the deploy-time angle (straight behind) acts like that grip:
+      // it trails in-line on the straights but still yields in turns. Mass-scaled so a heavy trailer gets enough pull.
+      else if(J.center>0){ try{ const m=(o.userData.mass||1); joint.configureMotorPosition(0, J.center*m*6, J.center*m*2.2); }catch(e){} }
     }catch(e){ console.warn('joint build failed for a prop', e); }
   }
 }
@@ -20256,7 +20261,7 @@ function propEntry(o){
   if(o.userData.animPlay && o.userData.animPlay!=='loop') e.animPlay=o.userData.animPlay;
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
-  if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
+  if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } if(J.center) e.j.center=J.center; }   // build 707: physics joint (759: trailer self-centering)
   if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; if(V.lean!=null && V.lean!==0.5) e.veh.lean=V.lean; if(V.dust!=null && V.dust!==1) e.veh.dust=V.dust; if(V.skid!=null && V.skid!==1) e.veh.skid=V.skid; if(V.animIdle) e.veh.animIdle=V.animIdle; if(V.animFwd) e.veh.animFwd=V.animFwd; if(V.animBack) e.veh.animBack=V.animBack; if(V.animLeft) e.veh.animLeft=V.animLeft; if(V.animRight) e.veh.animRight=V.animRight; if(V.ram!=null && V.ram!==50) e.veh.ram=V.ram; if(V.camView==='cockpit') e.veh.camView='cockpit'; if(V.seatF) e.veh.seatF=V.seatF; if(V.seatU!=null && V.seatU!==1) e.veh.seatU=V.seatU; if(V.seatS) e.veh.seatS=V.seatS; }   // build 709-745: drivable vehicle + tuning + ram + cockpit view
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
@@ -23025,7 +23030,7 @@ function renderEditorFields(){
           const ti=document.createElement('input'); ti.type='text'; ti.placeholder='blank = a fixed point in space; or a prop tag'; ti.value=J.to||''; ti.style.cssText='flex:1;min-width:0;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:12px;';
           ti.onchange=()=>{ pushUndoSnapshot(); J.to=ti.value.trim(); };
           cr.appendChild(csp); cr.appendChild(ti); jBody.appendChild(cr);
-          { const th=document.createElement('div'); th.className='hint'; th.style.cssText='margin:3px 0 0;font-size:10px;opacity:.85;'; th.innerHTML='<b>Tow a trailer:</b> make this prop <b>Dynamic</b> (above), set <b>Anchor to</b> = a drivable car’s tag, keep axis <b>Y</b>, and put the hinge point at the trailer’s <b>front</b> (its tongue). The car will pull it with real physics — it swings and lags in turns.'; jBody.appendChild(th); }
+          { const th=document.createElement('div'); th.className='hint'; th.style.cssText='margin:3px 0 0;font-size:10px;opacity:.85;'; th.innerHTML='<b>Tow a trailer:</b> make this prop <b>Dynamic</b> (above), set <b>Anchor to</b> = a drivable car’s tag, keep axis <b>Y</b>, and put the hinge point at the trailer’s <b>front</b> (its tongue). The car will pull it with real physics. If it swings out too easily, raise <b>Trailer tracking</b> below.'; jBody.appendChild(th); }
           const num=(label,key,min,max,step)=>{ const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.minWidth='90px'; const ni=document.createElement('input'); ni.type='number'; ni.min=min; ni.max=max; ni.step=step; ni.value=(J[key]!=null?J[key]:0); ni.style.cssText='width:74px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:12px;'; ni.addEventListener('focus',()=>pushUndoSnapshot()); ni.oninput=()=>{ J[key]=parseFloat(ni.value)||0; if(typeof updateSelectionHighlight==='function') updateSelectionHighlight(); };  ni.onchange=()=>{ J[key]=parseFloat(ni.value)||0; if(typeof updateSelectionHighlight==='function') updateSelectionHighlight(); };  l.appendChild(sp); l.appendChild(ni); jBody.appendChild(l); };   // build 756: live-update the hinge marker as you type
           const seg=(label,key,opts)=>{ const h=document.createElement('div'); h.className='hint'; h.style.margin='6px 0 2px'; h.textContent=label; jBody.appendChild(h); const row=document.createElement('div'); row.className='row2'; opts.forEach(o=>{ const b=document.createElement('button'); b.textContent=o[1]; if((J[key]||opts[0][0])===o[0]){ b.style.background='rgba(122,215,255,0.28)'; b.style.color='#eafff7'; } b.onclick=()=>{ pushUndoSnapshot(); J[key]=o[0]; renderEditorFields(); }; row.appendChild(b); }); jBody.appendChild(row); };
           seg('Hinge axis','axis',[['y','Y (door)'],['x','X (see-saw)'],['z','Z']]);
@@ -23033,6 +23038,8 @@ function renderEditorFields(){
           num('Hinge X (m)','ax',-50,50,0.05); num('Hinge Y (m)','ay',-50,50,0.05); num('Hinge Z (m)','az',-50,50,0.05);
           const lon=document.createElement('label'); lon.style.cssText='display:flex;align-items:center;gap:7px;color:#9fe6cf;font-size:12px;margin-top:6px;cursor:pointer;'; const lcb=document.createElement('input'); lcb.type='checkbox'; lcb.checked=!!J.lim; lcb.onchange=()=>{ pushUndoSnapshot(); J.lim=lcb.checked; renderEditorFields(); }; const lsp=document.createElement('span'); lsp.textContent='Limit the swing angle'; lon.appendChild(lcb); lon.appendChild(lsp); jBody.appendChild(lon);
           if(J.lim){ num('Min angle (°)','min',-180,180,1); num('Max angle (°)','max',-180,180,1); }
+          num('Trailer tracking','center',0,1,0.05);
+          { const ph=document.createElement('div'); ph.className='hint'; ph.style.marginTop='2px'; ph.innerHTML='<b>Trailer tracking</b> — simulates tyre grip so a towed trailer trails straight behind instead of swinging out (0 = free hinge). It still yields in turns; raise it if the trailer whips around, lower it if it feels stiff. Centres on the angle it has at <b>Deploy</b>, so place it in-line behind the car.'; jBody.appendChild(ph); }
           num('Motor speed (°/s)','mspeed',-720,720,5);
           { const ph=document.createElement('div'); ph.className='hint'; ph.style.marginTop='2px'; ph.textContent='Motor drives the hinge (0 = free swing). The basis for powered wheels / auto-closing doors.'; jBody.appendChild(ph); }
           if(J.mspeed) num('Motor strength','mstr',0,100,0.5);
