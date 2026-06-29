@@ -15699,7 +15699,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 754 · 2026-06-29';
+const BUILD_VERSION = 'build 755 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16101,6 +16101,10 @@ function trimeshDescFor(o){
 function addStaticColliderFor(o){
   if(!physWorld || !o) return;
   if(o.userData && o.userData.vehicle){
+    // build 755: remember the authored placement so re-entering the editor snaps the car back to where it was PLACED,
+    // not wherever it was last driven (otherwise autosave would persist the driven spot and lose the layout). Capture
+    // once — at first deploy the car sits at its authored transform; a later async rebuild must not overwrite it.
+    if(!o.userData.physHome){ o.userData.physHome = o.position.clone(); o.userData.physHomeQ = o.quaternion.clone(); }
     // build 709: a drivable vehicle gets no static collider (it would leave a ghost wall where it started).
     // build 746: but it DOES get a kinematic body (no collider) so a TRAILER can be jointed to it — the car then tows the
     // trailer with real physics (it swings, lags in turns, settles). The kinematic loop drives this body from the car's
@@ -24491,6 +24495,7 @@ function toggleEditor(){
     if(typeof syncSelToIdx==='function') syncSelToIdx();   // start each editor session with a clean (single) selection
     destroyPhysWorld();     // edit plain meshes; snap dynamic props back to their authored transform
     for(const o of dynamicProps){ if(o.userData.physHome) o.position.copy(o.userData.physHome); if(o.userData.physHomeQ) o.quaternion.copy(o.userData.physHomeQ); }
+    for(const o of propModels){ if(o && o.userData && o.userData.vehicle && o.userData.physHome){ o.position.copy(o.userData.physHome); if(o.userData.physHomeQ) o.quaternion.copy(o.userData.physHomeQ); o.userData.carSpeed=0; o.userData.carVelY=0; o.userData.carPitch=0; o.userData.carRoll=0; o.userData.leanRoll=0; o.userData.leanPitch=0; } }   // build 755: a driven car snaps back to its authored placement (its position is what gets saved)
     if(typeof clearRuntimeProps==='function') clearRuntimeProps();        // radial props don't belong in the editor or the saved level
     if(typeof restoreDestroyedProps==='function') restoreDestroyedProps();   // show authored props that were destroyed in play, so they can be edited again
     if(typeof xaSnapToBase==='function') xaSnapToBase();
@@ -24534,6 +24539,7 @@ function toggleEditor(){
     if(gizmo) gizmo.visible = false;
     setSceneWireframe(false);   // restore solid rendering
     buildInstancing();          // collapse repeated static shapes back into instances for play
+    for(const o of propModels){ if(o && o.userData && o.userData.vehicle){ o.userData.physHome=o.position.clone(); o.userData.physHomeQ=o.quaternion.clone(); } }   // build 755: re-base the car's reset target to its current (edited) placement
     buildPhysWorld();           // (re)create rigid bodies for dynamic props + static colliders
     if(typeof xaCapture==='function') xaCapture();   // re-base each animated prop to its current (edited) placement so position tweaks actually take effect
   }

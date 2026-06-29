@@ -286,4 +286,9 @@ assert(/<b>Tow a trailer:<\/b>/.test(src), 'the joint editor explains how to hit
 // --- build 747: the third-person body is hidden while driving (no driver clipping inside the car) ---
 assert(/if\(mountedTurret \|\| drivingCar\)\{ if\(_ownAvatar\) _ownAvatar\.visible=false; return; \}/.test(extractFunction('updateOwnAvatar')), 'driving hides the third-person avatar (like mounting a turret)');
 
+// --- build 755: a driven car returns to its authored placement on editor entry (its position is what gets saved) ---
+assert(/if\(!o\.userData\.physHome\)\{ o\.userData\.physHome = o\.position\.clone\(\); o\.userData\.physHomeQ = o\.quaternion\.clone\(\); \}/.test(extractFunction('addStaticColliderFor')), 'the car captures its authored transform (reset target) when its kinematic body is built');
+assert(/for\(const o of propModels\)\{ if\(o && o\.userData && o\.userData\.vehicle && o\.userData\.physHome\)\{ o\.position\.copy\(o\.userData\.physHome\);/.test(src), 'entering the editor snaps the car back to where it was placed');
+assert(/for\(const o of propModels\)\{ if\(o && o\.userData && o\.userData\.vehicle\)\{ o\.userData\.physHome=o\.position\.clone\(\);/.test(src), 'leaving the editor re-bases the car reset target to its edited placement');
+
 done('build 709-747: drivable vehicles — … / cockpit view / trailer towing / hide TP body while driving');
