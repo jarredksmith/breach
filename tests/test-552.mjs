@@ -247,4 +247,21 @@ assert(/if\(V\.animFwd\) e\.veh\.animFwd=V\.animFwd;/.test(src), 'the clips seri
 assert(/animRow\('Idle','animIdle'\); animRow\('Forward','animFwd'\); animRow\('Backward','animBack'\); animRow\('Turn left','animLeft'\); animRow\('Turn right','animRight'\);/.test(src), 'editor exposes the 5 animation-slot dropdowns');
 assert(/_setCarAnim\(o, \(_v&&_v\.animIdle\)\|\|''\);/.test(extractFunction('exitCar')), 'parking settles to the idle clip');
 
-done('build 709-741: drivable vehicles — … / impact feedback / push-back / openings ceiling / drive anims');
+// --- build 744: ram damage — driving into enemies / bots / rival players hurts them, scaled by speed ---
+assert(/ram:\(v\.ram==null\?50:Math\.max\(0, Math\.min\(500, \+v\.ram\|\|0\)\)\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores Ram damage (default 50, on)');
+const cra = extractFunction('_carRamActors');
+assert(/if\(_propBoxHitsActor\(box, ep\.x, ep\.y, ep\.z, 1\.7, 0\.45\)\)\{ en\._ramT=0\.4; enemyHurt\(en, dmg, null, null\);/.test(cra), 'a moving car hurts wave enemies it overlaps');
+assert(/if\(_propBoxHitsActor\(box, b\.pos\.x, b\.pos\.y, b\.pos\.z, 1\.7, 0\.45\)\)\{ b\._ramT=0\.4; botHurt\(b, dmg, null, null\);/.test(cra), 'and bots');
+assert(/sendToPlayer\(\+id, \{t:'pvpHit', d:dmg, from:NET\.myId\}\)/.test(cra) && /sameTeam\(NET\.myId, \+id\)/.test(cra), 'and rival players (PvP, not teammates) via pvpHit');
+assert(/if\(en\._ramT>0\)\{ en\._ramT-=dt; continue; \}/.test(cra), 'a per-target cooldown spaces the hits (one drive-through = a few hits)');
+assert(/if\(\(typeof NET==='undefined' \|\| NET\.mode!=='client'\) && cfg\.ram>0 && Math\.abs\(r\.speed\)>3\)\{/.test(du), 'host/solo authors ram damage, only above a threshold speed');
+assert(/const _rdmg = cfg\.ram \* Math\.min\(1, \(Math\.abs\(r\.speed\)-3\)\/Math\.max\(1, cfg\.maxSpeed\*0\.85-3\)\);/.test(du), 'damage scales from 0 up to the full Ram value near top speed');
+assert(/if\(V\.ram!=null && V\.ram!==50\) e\.veh\.ram=V\.ram;/.test(src), 'ram serialized when non-default');
+assert(/row\('Ram damage','ram', 0, 300, 5, 1\)/.test(src), 'editor exposes a Ram damage slider (0 = off)');
+
+// executable: ram damage is 0 below the threshold, scales up to the full value near top speed
+{ const ram=(spd,RAM,max)=> spd<=3?0: RAM*Math.min(1,(spd-3)/Math.max(1,max*0.85-3));
+  assert(ram(2,50,20)===0, 'a gentle bump does no damage');
+  assert(ram(17,50,20) > ram(8,50,20) && ram(8,50,20)>0, 'faster = more damage'); }
+
+done('build 709-744: drivable vehicles — … / openings ceiling / drive anims / no-climb / ram damage');

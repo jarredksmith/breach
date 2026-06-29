@@ -14565,7 +14565,8 @@ function vehicleApply(o, v){ if(!o) return; v=v||{}; o.userData.vehicle = {
   grip:Math.max(0.5, +v.grip||6),
   lean:(v.lean==null?0.5:Math.max(0, Math.min(2, +v.lean||0))),
   dust:(v.dust==null?1:Math.max(0, Math.min(2, +v.dust||0))), skid:(v.skid==null?1:Math.max(0, Math.min(2, +v.skid||0))),
-  animIdle:(''+(v.animIdle||'')), animFwd:(''+(v.animFwd||'')), animBack:(''+(v.animBack||'')), animLeft:(''+(v.animLeft||'')), animRight:(''+(v.animRight||'')) }; }   // 738: smoke/skid; 741: drive-state animation clips
+  animIdle:(''+(v.animIdle||'')), animFwd:(''+(v.animFwd||'')), animBack:(''+(v.animBack||'')), animLeft:(''+(v.animLeft||'')), animRight:(''+(v.animRight||'')),
+  ram:(v.ram==null?50:Math.max(0, Math.min(500, +v.ram||0))) }; }   // 741: drive-state anims; 744: ram damage to enemies/bots/rivals (0=off, default on)
 const _SPEED_UNIT = { kph:{ f:3.6, l:'km/h' }, mph:{ f:2.23694, l:'mph' } };   // m/s -> display
 // Pure arcade step: given the current forward speed + inputs (throttle/steer in -1..1) + config + dt, return the new
 // speed and the yaw change (radians). Self-contained (no globals) so the harness can test the feel math directly.
@@ -14816,6 +14817,28 @@ function _carShoveDynamics(o, speed, tx, tz, half, dt){   // tx,tz = unit TRAVEL
   }
   return reaction;
 }
+// build 744: ram damage — a moving car hurts wave enemies, bots, and rival players whose body it overlaps, scaled by speed.
+// Per-target cooldown so one drive-through is a few hits, not one per frame. Host/solo authors it; rival players are told via pvpHit.
+const _carRamBox = (typeof THREE!=='undefined') ? new THREE.Box3() : null;
+function _carRamActors(o, dmg, dt){
+  if(dmg<=0.5 || !_carRamBox) return;
+  const box=_carRamBox.setFromObject(o);
+  if(typeof enemies!=='undefined') for(const en of enemies){ if(!en||en.hp<=0||!en.mesh) continue;
+    if(en._ramT>0){ en._ramT-=dt; continue; }
+    const ep=en.mesh.position;
+    if(_propBoxHitsActor(box, ep.x, ep.y, ep.z, 1.7, 0.45)){ en._ramT=0.4; enemyHurt(en, dmg, null, null); if(typeof spark==='function') spark(ep, 0xff6b6b); }
+  }
+  if(typeof bots!=='undefined') for(const b of bots){ if(b.dead) continue;
+    if(b._ramT>0){ b._ramT-=dt; continue; }
+    if(_propBoxHitsActor(box, b.pos.x, b.pos.y, b.pos.z, 1.7, 0.45)){ b._ramT=0.4; botHurt(b, dmg, null, null); }
+  }
+  if(typeof NET!=='undefined' && NET.players) for(const id in NET.players){ const rp=NET.players[id]; if(!rp||!rp.posEye) continue;
+    if(rp._ramT>0){ rp._ramT-=dt; continue; }
+    if(rp.hp!=null && rp.hp<=0) continue;
+    if(typeof sameTeam==='function' && sameTeam(NET.myId, +id)) continue;
+    if(_propBoxHitsActor(box, rp.posEye.x, rp.posEye.y, rp.posEye.z, EYE, 0.45)){ rp._ramT=0.4; if(typeof sendToPlayer==='function') sendToPlayer(+id, {t:'pvpHit', d:dmg, from:NET.myId}); }
+  }
+}
 // True if a wall is within `dist` ahead of the car along the world-axis unit dir (dx,dz). Three rays across the car's
 // width, fired from its leading edge (so they start past the player capsule pinned at the centre).
 function _carWall(o, dx, dz, dist, half){
@@ -14974,6 +14997,11 @@ function driveUpdate(dt){
   _carModelQ.setFromAxisAngle(_UP_Y, -(cfg.modelYaw||0)*RAD);
   o.quaternion.copy(_carQuat).multiply(_carModelQ);
   o.updateMatrixWorld(true);
+  // build 744: drive THROUGH enemies / bots / rival players and it hurts them, scaled by speed (host/solo authors it)
+  if((typeof NET==='undefined' || NET.mode!=='client') && cfg.ram>0 && Math.abs(r.speed)>3){
+    const _rdmg = cfg.ram * Math.min(1, (Math.abs(r.speed)-3)/Math.max(1, cfg.maxSpeed*0.85-3));
+    _carRamActors(o, _rdmg, dt);
+  }
   player.pos.set(o.position.x + hx*_pv, o.position.y+EYE, o.position.z + hz*_pv); player.vel.set(0,0,0); player.onGround=true;   // build 721/725: ride at the pivot (centre, heading frame); player.yaw stays free for the mouse to steer
   // build 728/732: rear-tyre effects — skid marks while sliding/braking, and dust kicked up under power / slides / boost
   const _rbx=o.position.x - hx*_hd*0.7, _rbz=o.position.z - hz*_hd*0.7;   // rear axle (behind centre)
@@ -15626,7 +15654,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 743 · 2026-06-28';
+const BUILD_VERSION = 'build 744 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -20153,7 +20181,7 @@ function propEntry(o){
   if(o.userData.animClip) e.animClip = o.userData.animClip;
   if(o.userData.xa && o.userData.xa.on){ const a=o.userData.xa; e.xa={ mode:a.mode||'loop', trig:a.trig||'auto', mx:a.mx||0, my:a.my||0, mz:a.mz||0, rx:a.rx||0, ry:a.ry||0, rz:a.rz||0, dur:a.dur||2 }; if(a.scx||a.scy||a.scz){ e.xa.scx=a.scx||0; e.xa.scy=a.scy||0; e.xa.scz=a.scz||0; } if(a.pvx||a.pvy||a.pvz){ e.xa.pvx=a.pvx||0; e.xa.pvy=a.pvy||0; e.xa.pvz=a.pvz||0; } if(a.path && a.path.length>=2) e.xa.path = a.path.map(q=>[+q[0],+q[1],+q[2]]); }
   if(o.userData.joint){ const J=o.userData.joint; e.j={ type:J.type||'hinge', to:J.to||'', ax:J.ax||0, ay:J.ay||0, az:J.az||0, axis:J.axis||'y' }; if(J.lim){ e.j.lim=1; e.j.min=J.min; e.j.max=J.max; } if(J.mspeed){ e.j.mspeed=J.mspeed; e.j.mstr=(J.mstr!=null?J.mstr:1); } }   // build 707: physics joint
-  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; if(V.lean!=null && V.lean!==0.5) e.veh.lean=V.lean; if(V.dust!=null && V.dust!==1) e.veh.dust=V.dust; if(V.skid!=null && V.skid!==1) e.veh.skid=V.skid; if(V.animIdle) e.veh.animIdle=V.animIdle; if(V.animFwd) e.veh.animFwd=V.animFwd; if(V.animBack) e.veh.animBack=V.animBack; if(V.animLeft) e.veh.animLeft=V.animLeft; if(V.animRight) e.veh.animRight=V.animRight; }   // build 709-741: drivable vehicle + tuning + drive-state anim clips
+  if(o.userData.vehicle){ const V=o.userData.vehicle; e.veh={ maxSpeed:V.maxSpeed, accel:V.accel, turn:V.turn, reverse:V.reverse }; if(V.units==='mph') e.veh.units='mph'; if(V.boost>1.01){ e.veh.boost=V.boost; e.veh.boostDur=V.boostDur; e.veh.boostCd=V.boostCd; } if(V.modelYaw) e.veh.modelYaw=V.modelYaw; if(V.pivot) e.veh.pivot=V.pivot; if(V.camDist) e.veh.camDist=V.camDist; if(V.camHigh) e.veh.camHigh=V.camHigh; if(V.rideHeight) e.veh.rideHeight=V.rideHeight; if(V.grip && V.grip!==6) e.veh.grip=V.grip; if(V.lean!=null && V.lean!==0.5) e.veh.lean=V.lean; if(V.dust!=null && V.dust!==1) e.veh.dust=V.dust; if(V.skid!=null && V.skid!==1) e.veh.skid=V.skid; if(V.animIdle) e.veh.animIdle=V.animIdle; if(V.animFwd) e.veh.animFwd=V.animFwd; if(V.animBack) e.veh.animBack=V.animBack; if(V.animLeft) e.veh.animLeft=V.animLeft; if(V.animRight) e.veh.animRight=V.animRight; if(V.ram!=null && V.ram!==50) e.veh.ram=V.ram; }   // build 709-744: drivable vehicle + tuning + anim clips + ram damage
   if(o.userData.phys){ e.dyn=true; if(o.userData.mass!=null) e.mass=o.userData.mass;
     if(o.userData.noGrab) e.ng=true;
     if(o.userData.grabLabel && o.userData.noGrab!==true) e.glbl = String(o.userData.grabLabel).slice(0,80);   // build 679: custom grab prompt
@@ -22849,6 +22877,8 @@ function renderEditorFields(){
           { const fh=document.createElement('div'); fh.className='hint'; fh.style.margin='8px 0 1px'; fh.innerHTML='<b>Effects</b> — tyre smoke + skid marks. <b>1 = normal, 0 = off.</b> Raise for a dustier surface, lower for clean tarmac.'; vBody.appendChild(fh); }
           row('Tyre smoke','dust', 0, 2, 0.05, 1);
           row('Skid marks','skid', 0, 2, 0.05, 1);
+          { const rh=document.createElement('div'); rh.className='hint'; rh.style.margin='8px 0 1px'; rh.innerHTML='<b>Ram damage</b> — damage dealt to enemies / bots / rival players when you drive into them at full speed (scales with speed). <b>0 = off.</b>'; vBody.appendChild(rh); }
+          row('Ram damage','ram', 0, 300, 5, 1);
           { const mh=document.createElement('div'); mh.className='hint'; mh.style.margin='8px 0 1px'; mh.innerHTML='<b>Model facing</b> — rotate until the green arrow points out the <b>front</b> of your model. Drives nose-first; doesn’t move the prop.'; vBody.appendChild(mh); }
           row('Model facing (°)','modelYaw', -180, 180, 1, 1);
           { const ph=document.createElement('div'); ph.className='hint'; ph.style.margin='8px 0 1px'; ph.innerHTML='<b>Turn pivot</b> — the red dot is where the car spins. Slide it toward the nose (+) so a model whose origin sits at the tail turns around its <b>centre</b>, not the back.'; vBody.appendChild(ph); }
