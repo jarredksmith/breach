@@ -71,4 +71,12 @@ assert(/if\(typeof _clearDust==='function'\) _clearDust\(\);/.test(extractFuncti
 assert(/const _cx=document\.getElementById\('crosshair'\); if\(_cx\) _cx\.style\.display='none';/.test(extractFunction('enterCar')), 'the crosshair is hidden on entering a vehicle');
 assert(/const _cx=document\.getElementById\('crosshair'\); if\(_cx\) _cx\.style\.display='';/.test(extractFunction('exitCar')), 'the crosshair returns on exit');
 
-done('build 715/728/731/732/736/738: driving HUD + engine + screech + skids + gearbox + dust + effect sliders + no crosshair');
+// build 749: custom car SFX — engine clip loop (else synth) + brake / skid / boost one-shots
+const es3 = extractFunction('_engStart'), eu3 = extractFunction('_engUpdate');
+assert(/const engUrl=\(typeof curSounds==='function'\)\?curSounds\(\)\.carEngine:'';/.test(es3) && /es\.loop=true;/.test(es3), 'a set engine clip is looped (else the synth osc is used)');
+assert(/if\(_eng\.sample\)\{ _eng\.sample\.src\.playbackRate\.setTargetAtTime\(0\.55 \+ frac\*1\.5/.test(eu3) && /else if\(_eng\.o\)\{/.test(eu3), 'the engine clip pitch/volume track speed; the synth path is the fallback');
+assert(/playSample\(curSounds\(\)\.carBoost\)/.test(du), 'boost plays the car-boost clip');
+assert(/if\(handbrake && !o\.userData\._hbWas && Math\.abs\(o\.userData\.carSpeed\|\|0\)>3 && typeof playSample==='function'\) playSample\(curSounds\(\)\.carBrake\);/.test(du), 'the handbrake plays the brake clip on its rising edge');
+assert(/if\(_sliding && !o\.userData\._slideWas && Math\.abs\(r\.speed\)>4 && typeof playSample==='function'\) playSample\(curSounds\(\)\.carSkid\);/.test(du), 'a starting slide plays the skid clip');
+
+done('build 715-749: driving HUD + engine(+clip) + screech + skids + gearbox + dust + sliders + crosshair + car SFX');

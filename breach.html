@@ -5957,13 +5957,13 @@ const SFX = {
 // URLs are stored in audioSettings.sounds (per device). When a sample is loaded for an event we play it;
 // otherwise we fall back to the procedural SFX above. Samples route through sfxBus, so the SFX volume applies.
 const _soundBuffers = {};   // url -> AudioBuffer | 'loading' | 'error'
-function _emptySounds(){ return { shoot:{}, reload:{}, explode:'', coin:'', hit:'', kill:'', hurt:'', turret:'' }; }   // build 748: reload is a per-weapon map (like shoot)
+function _emptySounds(){ return { shoot:{}, reload:{}, explode:'', coin:'', hit:'', kill:'', hurt:'', turret:'', carEngine:'', carBrake:'', carSkid:'', carBoost:'' }; }   // build 748: per-weapon reload; 749: car SFX
 function _sanitizeSounds(s){ const o=_emptySounds();
   if(s && typeof s==='object'){
     if(s.shoot && typeof s.shoot==='object'){ for(const k in s.shoot){ if(typeof s.shoot[k]==='string') o.shoot[k]=s.shoot[k]; } }
     if(s.reload && typeof s.reload==='object'){ for(const k in s.reload){ if(typeof s.reload[k]==='string') o.reload[k]=s.reload[k]; } }
     else if(typeof s.reload==='string' && s.reload){ o.reload._all=s.reload; }   // legacy: a single shared reload clip applies to every gun
-    for(const k of ['explode','coin','hit','kill','hurt','turret']){ if(typeof s[k]==='string') o[k]=s[k]; }
+    for(const k of ['explode','coin','hit','kill','hurt','turret','carEngine','carBrake','carSkid','carBoost']){ if(typeof s[k]==='string') o[k]=s[k]; }
   }
   return o;
 }
@@ -5988,7 +5988,7 @@ function playSample(url){
   if(!(buf && buf.duration!==undefined)){ loadSound(url); return false; }   // not decoded yet -> let the synth play this time
   try{ const src=actx.createBufferSource(); src.buffer=buf; src.connect(sfxBus); src.start(); return true; }catch(e){ return false; }
 }
-function preloadCustomSounds(){ const s=curSounds(); if(!s) return; if(s.shoot){ for(const k in s.shoot) loadSound(s.shoot[k]); } if(s.reload && typeof s.reload==='object'){ for(const k in s.reload) loadSound(s.reload[k]); } else loadSound(s.reload); for(const k of ['explode','coin','hit','kill','hurt','turret']) loadSound(s[k]); }
+function preloadCustomSounds(){ const s=curSounds(); if(!s) return; if(s.shoot){ for(const k in s.shoot) loadSound(s.shoot[k]); } if(s.reload && typeof s.reload==='object'){ for(const k in s.reload) loadSound(s.reload[k]); } else loadSound(s.reload); for(const k of ['explode','coin','hit','kill','hurt','turret','carEngine','carBrake','carSkid','carBoost']) loadSound(s[k]); }
 
 // ---------- Audio buses + persisted volume settings (separate from level data) ----------
 let masterBus=null, sfxBus=null, musicBus=null;
@@ -14598,10 +14598,23 @@ let _eng = null;
 function _engStart(){
   if(_eng || typeof actx==='undefined' || !actx || !sfxBus) return;
   try{
-    const o=actx.createOscillator(); o.type='sawtooth'; o.frequency.value=60;
-    const f=actx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=500; f.Q.value=5;
-    const g=actx.createGain(); g.gain.value=0.0001;
-    o.connect(f).connect(g).connect(sfxBus); o.start();
+    let o=null, f=null, g=null, sample=null;
+    // build 749: a custom engine clip — if one is set + decoded, play it as a LOOP (playbackRate + gain track speed),
+    // replacing the synth oscillator. Otherwise use the procedural sawtooth (and start loading the clip for next time).
+    const engUrl=(typeof curSounds==='function')?curSounds().carEngine:'';
+    const engBuf=engUrl && (typeof _soundBuffers!=='undefined') && _soundBuffers[engUrl];
+    if(engBuf && engBuf.duration!==undefined){
+      const es=actx.createBufferSource(); es.buffer=engBuf; es.loop=true;
+      const eg=actx.createGain(); eg.gain.value=0.0001;
+      es.connect(eg).connect(sfxBus); es.start();
+      sample={ src:es, g:eg };
+    } else {
+      if(engUrl && typeof loadSound==='function') loadSound(engUrl);
+      o=actx.createOscillator(); o.type='sawtooth'; o.frequency.value=60;
+      f=actx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=500; f.Q.value=5;
+      g=actx.createGain(); g.gain.value=0.0001;
+      o.connect(f).connect(g).connect(sfxBus); o.start();
+    }
     // build 728: tyre screech — a looping noise buffer through a bandpass; its gain tracks the slip angle (silent until you slide)
     let scr=null;
     try{
@@ -14613,7 +14626,7 @@ function _engStart(){
       src.connect(bp).connect(sg).connect(sfxBus); src.start();
       scr={ src, bp, g:sg };
     }catch(e){}
-    _eng={ o, f, g, scr };
+    _eng={ o, f, g, sample, scr };
   }catch(e){ _eng=null; }
 }
 function _engUpdate(speed, throttle, slip){
@@ -14624,9 +14637,13 @@ function _engUpdate(speed, throttle, slip){
   const GEARS=5, _g=Math.min(GEARS-1, Math.floor(frac*GEARS)), _rpm=(frac*GEARS)-_g;   // _rpm = 0..1 within the current gear
   const _revHz=(58 + _g*6) + _rpm*120 + (throttle>0?16:0);
   try{
-    _eng.o.frequency.setTargetAtTime(_revHz, t, 0.07);
-    _eng.f.frequency.setTargetAtTime(380 + frac*1700, t, 0.1);
-    _eng.g.gain.setTargetAtTime(0.03 + frac*0.085 + (gas?0.02:0), t, 0.06);
+    if(_eng.sample){ _eng.sample.src.playbackRate.setTargetAtTime(0.55 + frac*1.5 + (throttle>0?0.12:0), t, 0.08);   // build 749: custom engine clip pitch/volume ride speed
+      _eng.sample.g.gain.setTargetAtTime(0.18 + frac*0.5 + (gas?0.05:0), t, 0.06); }
+    else if(_eng.o){
+      _eng.o.frequency.setTargetAtTime(_revHz, t, 0.07);
+      _eng.f.frequency.setTargetAtTime(380 + frac*1700, t, 0.1);
+      _eng.g.gain.setTargetAtTime(0.03 + frac*0.085 + (gas?0.02:0), t, 0.06);
+    }
     if(_eng.scr){ const sl=Math.max(0, Math.min(1, ((slip||0)-0.2)/0.9)) * Math.min(1, Math.abs(speed)/6);   // slide hard + fast = louder screech
       _eng.scr.g.gain.setTargetAtTime(0.0001 + sl*0.12, t, 0.05);
       _eng.scr.bp.frequency.setTargetAtTime(1300 + sl*900, t, 0.06); }
@@ -14634,9 +14651,11 @@ function _engUpdate(speed, throttle, slip){
 }
 function _engStop(){
   if(!_eng) return; const e=_eng; _eng=null;
-  try{ const t=actx.currentTime; e.g.gain.setTargetAtTime(0.0001, t, 0.05); e.o.stop(t+0.2);
+  try{ const t=actx.currentTime;
+    if(e.o){ e.g.gain.setTargetAtTime(0.0001, t, 0.05); e.o.stop(t+0.2); }
+    if(e.sample){ e.sample.g.gain.setTargetAtTime(0.0001, t, 0.05); try{ e.sample.src.stop(t+0.2); }catch(_){} }
     if(e.scr){ e.scr.g.gain.setTargetAtTime(0.0001, t, 0.05); try{ e.scr.src.stop(t+0.2); }catch(_){} }
-    setTimeout(()=>{ try{ e.o.disconnect(); e.f.disconnect(); e.g.disconnect(); if(e.scr){ e.scr.src.disconnect(); e.scr.bp.disconnect(); e.scr.g.disconnect(); } }catch(_){} }, 360); }catch(e2){}
+    setTimeout(()=>{ try{ if(e.o){ e.o.disconnect(); e.f.disconnect(); e.g.disconnect(); } if(e.sample){ e.sample.src.disconnect(); e.sample.g.disconnect(); } if(e.scr){ e.scr.src.disconnect(); e.scr.bp.disconnect(); e.scr.g.disconnect(); } }catch(_){} }, 360); }catch(e2){}
 }
 // build 736: soft canvas textures so dust reads as smoke (radial alpha falloff) and skids as faded rubber (soft edges),
 // instead of flat opaque squares. Generated once, cached; degrade to null (plain quad) if canvas is unavailable.
@@ -14894,7 +14913,7 @@ function driveUpdate(dt){
   const bMult=+cfg.boost||1, boostKey=(keys['ShiftLeft']||keys['ShiftRight']);
   if(o.userData.boostCdT>0) o.userData.boostCdT=Math.max(0, o.userData.boostCdT-dt);
   if(o.userData.boostT>0){ o.userData.boostT-=dt; if(o.userData.boostT<=0){ o.userData.boostT=0; o.userData.boostCdT=+cfg.boostCd||0; } }
-  else if(boostKey && bMult>1.01 && (o.userData.boostCdT||0)<=0 && throttle>0){ o.userData.boostT=+cfg.boostDur||3; }   // engage (forward only)
+  else if(boostKey && bMult>1.01 && (o.userData.boostCdT||0)<=0 && throttle>0){ o.userData.boostT=+cfg.boostDur||3; if(typeof playSample==='function') playSample(curSounds().carBoost); }   // engage (forward only) + build 749 boost SFX
   const boosting=o.userData.boostT>0;
   const effCfg = boosting ? { maxSpeed:cfg.maxSpeed*bMult, accel:cfg.accel*1.5, turn:cfg.turn, reverse:cfg.reverse } : cfg;
   const r = driveStep(o.userData.carSpeed||0, throttle, 0, effCfg, dt);   // driveStep handles the SPEED; steering is mouse-orbit below
@@ -14933,6 +14952,8 @@ function driveUpdate(dt){
   // car goes where it points; a handbrake (Space / B) or a hard turn at speed lets travel lag the heading => it slides.
   if(o.userData.carVelYaw==null) o.userData.carVelYaw=carYaw;
   const handbrake=(keys['Space']||keys['KeyB']);
+  if(handbrake && !o.userData._hbWas && Math.abs(o.userData.carSpeed||0)>3 && typeof playSample==='function') playSample(curSounds().carBrake);   // build 749: brake SFX on the rising edge of the handbrake
+  o.userData._hbWas=handbrake;
   const gripBase=Math.max(0.5,+cfg.grip||6), grip=handbrake?gripBase*0.16:gripBase;
   let vd=carYaw-o.userData.carVelYaw; vd=Math.atan2(Math.sin(vd),Math.cos(vd));
   const vstep=grip*dt; o.userData.carVelYaw += Math.max(-vstep,Math.min(vstep,vd));
@@ -15020,6 +15041,8 @@ function driveUpdate(dt){
   // build 728/732: rear-tyre effects — skid marks while sliding/braking, and dust kicked up under power / slides / boost
   const _rbx=o.position.x - hx*_hd*0.7, _rbz=o.position.z - hz*_hd*0.7;   // rear axle (behind centre)
   const _sliding=(_slip>0.3 || handbrake);
+  if(_sliding && !o.userData._slideWas && Math.abs(r.speed)>4 && typeof playSample==='function') playSample(curSounds().carSkid);   // build 749: skid SFX when a slide begins
+  o.userData._slideWas=_sliding;
   const _skidAmt=(cfg.skid==null?1:+cfg.skid), _dustAmt=(cfg.dust==null?1:+cfg.dust);   // build 738: editor amounts (0 = off)
   if(_skidAmt>0 && _grounded && _sliding && Math.abs(r.speed)>3){
     o.userData._skidT=(o.userData._skidT||0)+dt;
@@ -15668,7 +15691,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 748 · 2026-06-28';
+const BUILD_VERSION = 'build 749 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -24882,7 +24905,8 @@ function _fsAssignSlots(){
     out.push({ label:'Shoot \u00b7 '+nm, set:u=>{ if(!audioSettings.sounds.shoot) audioSettings.sounds.shoot={}; if(u) audioSettings.sounds.shoot[k]=u; else delete audioSettings.sounds.shoot[k]; } });
     out.push({ label:'Reload \u00b7 '+nm, set:u=>{ if(u) audioSettings.sounds.reload[k]=u; else delete audioSettings.sounds.reload[k]; } });
   }
-  for(const [lab,key] of [['Grenade','explode'],['Coin','coin'],['Hit marker','hit'],['Enemy kill','kill'],['Player hurt','hurt'],['Turret fire','turret']]){ out.push({ label:lab, set:u=>{ audioSettings.sounds[key]=u; } }); }
+  for(const [lab,key] of [['Grenade','explode'],['Coin','coin'],['Hit marker','hit'],['Enemy kill','kill'],['Player hurt','hurt'],['Turret fire','turret'],
+      ['Car engine','carEngine'],['Car brake','carBrake'],['Car skid','carSkid'],['Car boost','carBoost']]){ out.push({ label:lab, set:u=>{ audioSettings.sounds[key]=u; } }); }
   return out;
 }
 function renderFreesoundBrowser(host, refresh, directTarget){
@@ -24959,7 +24983,8 @@ function populateSoundEditor(host){
     host.appendChild(_sndRow('Shoot · '+name, ()=>audioSettings.sounds.shoot[k], v=>{ if(v) audioSettings.sounds.shoot[k]=v; else delete audioSettings.sounds.shoot[k]; }));
     host.appendChild(_sndRow('Reload · '+name, ()=>audioSettings.sounds.reload[k], v=>{ if(v) audioSettings.sounds.reload[k]=v; else delete audioSettings.sounds.reload[k]; }));
   }
-  for(const [lab,key] of [['Grenade explosion','explode'],['Coin pickup','coin'],['Hit marker','hit'],['Enemy kill','kill'],['Player hurt','hurt']]){
+  for(const [lab,key] of [['Grenade explosion','explode'],['Coin pickup','coin'],['Hit marker','hit'],['Enemy kill','kill'],['Player hurt','hurt'],
+      ['Car engine (loops)','carEngine'],['Car brake','carBrake'],['Car skid/slide','carSkid'],['Car boost','carBoost']]){   // build 749
     host.appendChild(_sndRow(lab, ()=>audioSettings.sounds[key], v=>{ audioSettings.sounds[key]=v; }));
   }
   host.appendChild(renderFreesoundBrowser(host, ()=>populateSoundEditor(host)));   // search + import free CC sound effects
