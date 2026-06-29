@@ -21,7 +21,7 @@ assert(/if\(mountedTurret\)\{\s*\n[\s\S]*?turretEyeWorld\(mountedTurret, camera\
 assert(/if\(mountedTurret\) turretFire\(\); else shoot\(\);/.test(src), 'fire routes to the turret MG while mounted');
 assert(/if\(mountedTurret\)\{ wish\.set\(0,0,0\); moveScale=0; \}/.test(src), 'movement is locked while mounted');
 assert(/&& !mountedTurret\)\{ player\.vel\.y = JUMP;/.test(src), 'jump is blocked while mounted');
-assert(/if\(mountedTurret\)\{ if\(_ownAvatar\) _ownAvatar\.visible=false; return; \}/.test(src), 'third-person body is hidden while mounted');
+assert(/if\(mountedTurret \|\| drivingCar\)\{ if\(_ownAvatar\) _ownAvatar\.visible=false; return; \}/.test(src), 'third-person body is hidden while mounted (or driving, build 747)');
 
 // ---- overlay + safety ----
 assert(/id="turretHud"/.test(html) && /id="turretHeatFill"/.test(html), 'the control overlay + heat gauge exist');

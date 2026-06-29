@@ -12952,7 +12952,7 @@ function ensureOwnAvatar(){
   return _ownAvatar;
 }
 function updateOwnAvatar(dt){
-  if(mountedTurret){ if(_ownAvatar) _ownAvatar.visible=false; return; }
+  if(mountedTurret || drivingCar){ if(_ownAvatar) _ownAvatar.visible=false; return; }   // build 747: no third-person body while on a turret or driving (it would stand inside the car)
   if(!(tpMode && gameOn && !editorOpen)){ if(_ownAvatar) _ownAvatar.visible=false; return; }
   const a=ensureOwnAvatar(); a.visible=true;
   attachAvatarGun(a, curWep, activeCharGrip(curWep));   // hold the model for the active weapon (swaps when you change guns); authored character grip wins over the personal map
@@ -15660,7 +15660,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 746 · 2026-06-28';
+const BUILD_VERSION = 'build 747 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

@@ -283,4 +283,7 @@ assert(/for\(const c of colliders\)\{ if\(c!==self && c\.userData && c\.userData
 assert(/for\(const o of colliders\)\{ const kb = o\.userData && o\.userData\._kbody; if\(!kb\) continue;[\s\S]*?kb\.setNextKinematicTranslation/.test(src), 'the kinematic loop drives the car body from its pose each frame (towing the trailer)');
 assert(/<b>Tow a trailer:<\/b>/.test(src), 'the joint editor explains how to hitch a trailer to a drivable car');
 
-done('build 709-746: drivable vehicles — … / ram damage / cockpit view / trailer towing');
+// --- build 747: the third-person body is hidden while driving (no driver clipping inside the car) ---
+assert(/if\(mountedTurret \|\| drivingCar\)\{ if\(_ownAvatar\) _ownAvatar\.visible=false; return; \}/.test(extractFunction('updateOwnAvatar')), 'driving hides the third-person avatar (like mounting a turret)');
+
+done('build 709-747: drivable vehicles — … / cockpit view / trailer towing / hide TP body while driving');
