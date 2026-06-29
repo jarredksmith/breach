@@ -283,6 +283,11 @@ assert(/for\(const c of colliders\)\{ if\(c!==self && c\.userData && c\.userData
 assert(/for\(const o of colliders\)\{ const kb = o\.userData && o\.userData\._kbody; if\(!kb\) continue;[\s\S]*?kb\.setNextKinematicTranslation/.test(src), 'the kinematic loop drives the car body from its pose each frame (towing the trailer)');
 assert(/<b>Tow a trailer:<\/b>/.test(src), 'the joint editor explains how to hitch a trailer to a drivable car');
 
+// --- build 756: a live hinge marker (dot + axis) so authoring the hinge offset isn't blind ---
+assert(/function _setJointGiz\(o\)\{/.test(src) && /g\.position\.set\(J\.ax\|\|0, J\.ay\|\|0, J\.az\|\|0\)\.applyQuaternion\(o\.quaternion\)\.add\(o\.position\)/.test(src), 'the hinge marker sits at the world hinge point (same math as buildJoints)');
+assert(/_hgAxis\.set\(0,1,0\); if\(J\.axis==='x'\) _hgAxis\.set\(1,0,0\); else if\(J\.axis==='z'\) _hgAxis\.set\(0,0,1\);/.test(src), 'the marker axis follows the chosen hinge axis');
+assert(/_setJointGiz\(o\);/.test(src) && /_setJointGiz\(null\);/.test(src), 'the hinge marker tracks the selection (hidden on multi-select)');
+
 // --- build 747: the third-person body is hidden while driving (no driver clipping inside the car) ---
 assert(/if\(mountedTurret \|\| drivingCar\)\{ if\(_ownAvatar\) _ownAvatar\.visible=false; return; \}/.test(extractFunction('updateOwnAvatar')), 'driving hides the third-person avatar (like mounting a turret)');
 
