@@ -59,4 +59,9 @@ assert(/pickup\(\)\{ if\(playSample\(curSounds\(\)\.pickup\)\) return; tone\(\{f
 assert(/function giveItem[\s\S]*?SFX\.pickup\(\)/.test(src), 'item pickups use the pickup sound');
 assert(/function applyHealth\(\)\{[\s\S]*?SFX\.pickup\(\)/.test(src), 'powerups use the pickup sound');
 
+// build 753: the LIVE Scene>Audio editor panel exposes the new rows (car SFX + per-enemy-type kill)
+assert(/subSec\('Audio','audio',true\)/.test(src), 'there is a live Scene > Audio editor subsection');
+assert(/\['Car engine \(loops\)','carEngine'\],\['Car brake','carBrake'\],\['Car skid \/ slide','carSkid'\],\['Car boost','carBoost'\]/.test(src), 'the audio panel lists the car SFX rows');
+assert(/for\(const _ek of ENEMY_TYPE_KEYS\)\{[\s\S]*?audioSettings\.sounds\.enemyKill\[_ek\]/.test(src), 'the audio panel lists per-enemy-type kill rows');
+
 done('custom sound samples');

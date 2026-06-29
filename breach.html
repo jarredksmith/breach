@@ -15699,7 +15699,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 752 · 2026-06-28';
+const BUILD_VERSION = 'build 753 · 2026-06-28';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -22028,10 +22028,15 @@ function renderEditorFields(){
       hint(b,'Playable half-size (rebuilds floor + walls live)','2px 0 4px'); slider(b,'Arena size','arena',15,400,1); }
     { const b=subSec('Audio','audio',true);
       if(!audioSettings.sounds) audioSettings.sounds=_emptySounds(); if(!audioSettings.sounds.shoot) audioSettings.sounds.shoot={};
-      hint(b,'Music + game sound effects. Per-weapon shoot sounds live on each weapon in the Weapons tab.','2px 0 6px');
+      if(!audioSettings.sounds.enemyKill || typeof audioSettings.sounds.enemyKill!=='object') audioSettings.sounds.enemyKill={};
+      hint(b,'Music + game sound effects (mp3/wav/ogg URLs). Per-weapon <b>shoot &amp; reload</b> sounds live on each weapon in the <b>Weapons</b> tab.','2px 0 6px');
       b.appendChild(_sndRow('Music track (loops)', ()=>audioSettings.musicUrl||'', v=>{ audioSettings.musicUrl=v||''; if(_musicOn){ stopMusic(); startMusic(); } }));
-      for(const [lab,key] of [['Reload','reload'],['Grenade explosion','explode'],['Coin pickup','coin'],['Hit marker','hit'],['Enemy kill','kill'],['Player hurt','hurt']]){
+      for(const [lab,key] of [['Grenade explosion','explode'],['Coin pickup','coin'],['Powerup / item pickup','pickup'],['Jump','jump'],['Hit marker','hit'],['Enemy kill (all)','kill'],['Player hurt','hurt'],
+          ['Car engine (loops)','carEngine'],['Car brake','carBrake'],['Car skid / slide','carSkid'],['Car boost','carBoost']]){   // build 749/751/753
         b.appendChild(_sndRow(lab, ()=>audioSettings.sounds[key], v=>{ audioSettings.sounds[key]=v; })); }
+      hint(b,'<b>Per-enemy-type kill</b> — overrides "Enemy kill (all)" for that type:','6px 0 3px');
+      for(const _ek of ENEMY_TYPE_KEYS){ const _en=(ENEMY_TYPES[_ek]&&ENEMY_TYPES[_ek].name)||_ek;   // build 752/753
+        b.appendChild(_sndRow('Kill · '+_en, ()=>audioSettings.sounds.enemyKill[_ek], v=>{ if(v) audioSettings.sounds.enemyKill[_ek]=v; else delete audioSettings.sounds.enemyKill[_ek]; })); }
       b.appendChild(renderFreesoundBrowser(b, ()=>renderEditorFields())); }
 
     // ===== ENEMIES section =====
