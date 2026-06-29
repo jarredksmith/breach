@@ -56,7 +56,10 @@ assert(/const MAX_RISE = Math\.max\(0\.9, half\.hh\);/.test(cw), 'a max climbabl
 assert(/const y = baseY \+ MAX_RISE \+ 0\.15 \+ start\*0\.45;/.test(cw), 'rays are cast above the tallest climbable step + a ramp-clearance term (so openings + ramps pass, walls block)');
 assert(/if\(physWorld\.castRay\(ray, dist\+0\.12, true\)\) return true;/.test(cw), 'a hit at body height = wall; an archway/ramp passes (no surfaceTopAt over-blocking)');
 assert(/if\(drivingCar\)\{ drivingCar=null; _carReturn=null; \}/.test(extractFunction('startGame')), 'never start a round still driving');
-assert(/if\(o\.userData && o\.userData\.vehicle\) return;/.test(extractFunction('addStaticColliderFor')), 'a vehicle gets no static collider (it is moved kinematically)');
+{ const asc=extractFunction('addStaticColliderFor');
+  assert(/if\(o\.userData && o\.userData\.vehicle\)\{/.test(asc), 'a vehicle gets no static collider (it is moved kinematically)');
+  // build 746: but it DOES get a kinematic body (no collider) so a trailer can be jointed/towed
+  assert(/o\.userData\._kbody = physWorld\.createRigidBody\(RAPIER\.RigidBodyDesc\.kinematicPositionBased\(\)/.test(asc), 'build 746: a drivable car gets a kinematic body so a trailer can be hitched + towed'); }
 
 // --- build 710 fix: the ground query excludes the car so it can't read its own roof and climb into the sky ---
 assert(/function surfaceTopAt\(x, z, exclude, skipDynamic, ceilY\)\{/.test(src), 'surfaceTopAt takes an exclude');
@@ -275,4 +278,9 @@ assert(/_carViewOverride=null;/.test(extractFunction('exitCar')), 'the view over
 assert(/if\(V\.camView==='cockpit'\) e\.veh\.camView='cockpit';/.test(src) && /if\(V\.seatU!=null && V\.seatU!==1\) e\.veh\.seatU=V\.seatU;/.test(src), 'cockpit view + seat offsets serialize');
 assert(/\[\['chase','Chase'\],\['cockpit','Cockpit'\]\]/.test(src) && /row\('Seat forward \(m\)','seatF'/.test(src), 'editor exposes the view toggle + seat sliders');
 
-done('build 709-745: drivable vehicles — … / drive anims / no-climb / ram damage / cockpit view');
+// --- build 746: trailer towing — the car's kinematic body is found by the joint lookup + driven by the kinematic loop ---
+assert(/for\(const c of colliders\)\{ if\(c!==self && c\.userData && c\.userData\.tag===tag && \(c\.userData\._kbody/.test(extractFunction('_findJointBody')), 'a jointed trailer finds the car by tag (its kinematic body)');
+assert(/for\(const o of colliders\)\{ const kb = o\.userData && o\.userData\._kbody; if\(!kb\) continue;[\s\S]*?kb\.setNextKinematicTranslation/.test(src), 'the kinematic loop drives the car body from its pose each frame (towing the trailer)');
+assert(/<b>Tow a trailer:<\/b>/.test(src), 'the joint editor explains how to hitch a trailer to a drivable car');
+
+done('build 709-746: drivable vehicles — … / ram damage / cockpit view / trailer towing');
