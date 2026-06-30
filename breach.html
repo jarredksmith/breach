@@ -15700,7 +15700,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 760 · 2026-06-29';
+const BUILD_VERSION = 'build 761 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16066,7 +16066,9 @@ function createBodyFor(obj){
     RAPIER.RigidBodyDesc.dynamic()
       .setTranslation(obj.position.x, obj.position.y, obj.position.z)
       .setRotation({ x:q.x, y:q.y, z:q.z, w:q.w })
-      .setLinearDamping(_jointed?0.5:0.2).setAngularDamping(_jointed?1.1:0.45).setCcdEnabled(true));
+      // build 761: CCD off for a towed body — its per-frame shape sweep fights the hinge constraint and is a prime
+      // source of high-frequency buzz; a jointed prop is constrained so it can't tunnel anyway.
+      .setLinearDamping(_jointed?0.6:0.2).setAngularDamping(_jointed?1.3:0.45).setCcdEnabled(!_jointed));
   const info = propShapeInfo(obj);
   // footprint used for player<->prop collision: horizontal radius + total height (origin is the base)
   let fr, fh;
@@ -16076,7 +16078,7 @@ function createBodyFor(obj){
   obj.userData.physInfo = { radius:fr, height:fh };
   const cd = colliderDescFor(info)
     .setTranslation(info.off.x, info.off.y, info.off.z)
-    .setRestitution(_jointed?0:0.3).setFriction(0.85)   // build 758: a towed body shouldn't bounce on bumps (adds to the shake)
+    .setRestitution(_jointed?0:0.3).setFriction(_jointed?0.25:0.85)   // build 758/761: a towed body shouldn't bounce; low friction stops stick-slip judder as it's dragged (centering keeps it tracking)
     .setMass(obj.userData.mass || 1);
   physWorld.createCollider(cd, rb);
   obj.userData.phys.body = rb;

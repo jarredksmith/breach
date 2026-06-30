@@ -37,8 +37,11 @@ assert(/for\(const o of dynamicProps\) createBodyFor\(o\);\s*\n\s*buildJoints\(\
 assert(/physWorld\.numSolverIterations = 8;/.test(src), 'the world runs more solver iterations so a hinge resolves stiffly (no buzz)');
 const cbf = extractFunction('createBodyFor');
 assert(/const _jointed = !!obj\.userData\.joint;/.test(cbf), 'createBodyFor detects a jointed (towed) prop');
-assert(/setLinearDamping\(_jointed\?0\.5:0\.2\)\.setAngularDamping\(_jointed\?1\.1:0\.45\)/.test(cbf), 'a jointed body gets heavier linear + angular damping');
+assert(/setLinearDamping\(_jointed\?0\.6:0\.2\)\.setAngularDamping\(_jointed\?1\.3:0\.45\)/.test(cbf), 'a jointed body gets heavier linear + angular damping');
 assert(/setRestitution\(_jointed\?0:0\.3\)/.test(cbf), 'a jointed body does not bounce on bumps');
+// build 761: CCD off (its sweep fights the hinge) + low friction (no stick-slip judder while dragged)
+assert(/setCcdEnabled\(!_jointed\)/.test(cbf), 'a towed body has CCD off so its sweep does not fight the hinge');
+assert(/setFriction\(_jointed\?0\.25:0\.85\)/.test(cbf), 'a towed body uses low friction so it glides instead of stick-slip juddering');
 
 // --- build 759: trailer self-centering = a mass-scaled position spring toward the deploy angle (only without a velocity motor) ---
 // build 760: acceleration-based (mass-independent) + overdamped so a heavy trailer self-centers WITHOUT ringing
