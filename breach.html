@@ -15082,11 +15082,15 @@ function _resolvePlayerVsCars(){
     const fx=-Math.sin(cy), fz=-Math.cos(cy), rxu=-fz, rzu=fx;
     const bx=o.position.x+fx*ext.oz+rxu*ext.ox, bz=o.position.z+fz*ext.oz+rzu*ext.ox, byc=o.position.y+ext.oy;
     const top=byc+ext.hh, bot=byc-ext.hh;
-    if(fy >= top-0.3) continue;        // on / above the roof — the ground system supports you (don't shove sideways)
+    if(fy >= top-1e-3) continue;       // feet at/above the roof — the ground system stands you on it
     if(headY <= bot+1e-3) continue;    // entirely beneath the car
     const dx=player.pos.x-bx, dz=player.pos.z-bz, along=dx*fx+dz*fz, side=dx*rxu+dz*rzu;
     const oAlong=(ext.hd+R)-Math.abs(along), oSide=(ext.hw+R)-Math.abs(side);
     if(oAlong<=0 || oSide<=0) continue;   // outside the footprint
+    // build 778: if the SHALLOWEST exit is upward (you're over the footprint and near the roof — i.e. coming DOWN onto it),
+    // don't shove sideways — let the ground system stand you on top. Only block horizontally when a side is the nearest exit.
+    const upPen=top-fy;
+    if(upPen<=oAlong && upPen<=oSide) continue;
     let pdx,pdz,pen; if(oAlong<=oSide){ const s=along>=0?1:-1; pdx=fx*s; pdz=fz*s; pen=oAlong; } else { const s=side>=0?1:-1; pdx=rxu*s; pdz=rzu*s; pen=oSide; }
     player.pos.x+=pdx*pen; player.pos.z+=pdz*pen;
     const vp=player.vel.x*pdx+player.vel.z*pdz; if(vp<0){ player.vel.x-=pdx*vp; player.vel.z-=pdz*vp; }   // kill the velocity into the car
@@ -15970,7 +15974,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 777 · 2026-06-29';
+const BUILD_VERSION = 'build 778 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

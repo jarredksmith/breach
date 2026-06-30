@@ -346,7 +346,7 @@ assert(/function _editorFlamePreview\(o, dt\)\{/.test(src), 'there is an editor 
 assert(/function surfaceTopAt\(x, z, exclude, skipDynamic, ceilY, skipVehicles\)\{/.test(src), 'surfaceTopAt takes a skipVehicles flag');
 assert(/if\(!skipVehicles && _vehicleMeshes\.length\)\{[\s\S]*?_downRay\.intersectObjects/.test(src), 'the player ground ray includes vehicles (stand on / ride a car)');
 const rpc = extractFunction('_resolvePlayerVsCars');
-assert(/if\(fy >= top-0\.3\) continue;/.test(rpc), 'no sideways shove when the feet are on/above the roof (so you can stand)');
+assert(/const upPen=top-fy;\s*\n\s*if\(upPen<=oAlong && upPen<=oSide\) continue;/.test(rpc), 'no sideways shove when the shallowest exit is upward — you can land + stand on top (build 778)');
 assert(/player\.pos\.x\+=pdx\*pen; player\.pos\.z\+=pdz\*pen;/.test(rpc), 'the player is pushed out of the car footprint (no walking through)');
 const rcc = extractFunction('_resolveCarVsCars');
 assert(/ov=\(aH\+bH\)-Math\.abs\(d\);/.test(rcc) && /if\(ov<=0\)\{ sep=true; break; \}/.test(rcc), 'car-vs-car uses an SAT separating-axis test');
