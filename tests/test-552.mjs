@@ -298,6 +298,17 @@ assert(/o\.userData\.leanRoll=0; o\.userData\.leanPitch=0; o\.userData\._prevSpe
 assert(/const _baseFov=\(typeof worldCfg!=='undefined'&&worldCfg\.fov\)\?worldCfg\.fov:78, _fovT=_baseFov \+ _sf\*12 \+ _bst\*9;/.test(src), 'FOV target widens with speed fraction + a boost kick');
 assert(/camera\.fov \+= \(_fovT-camera\.fov\)\*Math\.min\(1,dt\*4\); camera\.updateProjectionMatrix\(\);/.test(src), 'FOV eases toward the target each frame');
 assert(/if\(_shk>0\.0006\)\{ camera\.rotation\.x \+= \(Math\.random\(\)-0\.5\)\*_shk; camera\.rotation\.y \+= \(Math\.random\(\)-0\.5\)\*_shk; \}/.test(src), 'a faint shake scales with speed/boost');
+// --- build 781: car headlights (two forward spotlights, toggle with H) ---
+assert(/headlights:!!v\.headlights, headColor:\(v\.headColor!=null\?\(v\.headColor\|0\):0xfff2cc\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores the headlight flag + colour');
+assert(/if\(V\.headlights\)\{ e\.veh\.headlights=1;/.test(src), 'headlights serialize when on');
+const uhl = extractFunction('_updateHeadlights');
+assert(/if\(!cfg\.headlights \|\| !_carHeadOn \|\| drivingCar!==o\)\{ _headlightsOff\(\); return; \}/.test(uhl), 'headlights only light the car you are driving (and only when toggled on)');
+assert(/L\.target\.position\.set\(L\.position\.x \+ hx\*rng, y - rng\*0\.14, L\.position\.z \+ hz\*rng\)/.test(uhl), 'each headlight aims forward along the heading, dipped slightly');
+assert(/_updateHeadlights\(o, cfg\)/.test(du), 'driveUpdate positions the headlights each frame');
+assert(/e\.code==='KeyH'[\s\S]*?_carHeadOn=!_carHeadOn/.test(src), 'H toggles the headlights while driving');
+assert(/_carHeadOn = \(o\.userData\.vehicle\.headStart!==false\)/.test(extractFunction('enterCar')) && /if\(typeof _headlightsOff==='function'\) _headlightsOff\(\);/.test(extractFunction('exitCar')), 'lights start per the vehicle default on enter, and go off on exit');
+assert(/<b>Headlights<\/b>/.test(src) && /row\('Range \(m\)','headRange'/.test(src), 'the editor exposes the headlight toggle + controls');
+
 // build 771: the speed/boost shake is toned down (~40% of build 730) + a softer impact jolt
 assert(/const _shk=_sf\*0\.0018 \+ _bst\*0\.0025;/.test(src), 'the high-speed camera shake is reduced');
 assert(/camera\.rotation\.x \+= \(Math\.random\(\)-0\.5\)\*_hs\*1\.3;/.test(src), 'the impact jolt is softer (1.3x, was 2x)');
