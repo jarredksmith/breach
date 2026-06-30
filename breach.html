@@ -15976,7 +15976,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 779 · 2026-06-29';
+const BUILD_VERSION = 'build 780 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17543,22 +17543,34 @@ function detonateExploder(en){
 // ground collisions read as a ragdoll for an arcade FPS — and it works on ANY model (no rig needed). Capped + faded out.
 const _corpV = new THREE.Vector3(), _corpBox = new THREE.Box3(), _corpSz = new THREE.Vector3();
 const RAGDOLL_MAX = 24;
+// build 780: snap the skeleton to the END of the model's death clip (if it ships one), so the corpse slumps instead of
+// staying in an idle pose. No-op for models without a 'die' clip (they keep their current pose).
+function _poseDeath(mesh){
+  try{
+    if(typeof setEnemyAnimState==='function' && mesh.userData && mesh.userData.visual && mesh.userData.visual.userData && mesh.userData.visual.userData.stateActions){
+      setEnemyAnimState(mesh, 'die');
+      const mx=mesh.userData.mixer; if(mx){ mx.update(5); mx.update(0); }   // play the die clip to its (clamped) final frame, then bake it
+    }
+  }catch(e){}
+}
 function spawnCorpse(mesh, dirx, diry, dirz, force){
   if(!mesh || !physWorld || !RAPIER || !RAPIER.RigidBodyDesc || typeof physWorld.createRigidBody!=='function') return false;
   _corpBox.setFromObject(mesh); if(_corpBox.isEmpty()) return false; _corpBox.getSize(_corpSz);
-  const totalH=Math.max(0.6, _corpSz.y), r=Math.max(0.16, Math.min(_corpSz.x,_corpSz.z)*0.32), hh=Math.max(0.04, totalH*0.5 - r);
+  _poseDeath(mesh);   // slump into the death pose before we freeze + measure
+  const hy=Math.max(0.3, _corpSz.y*0.5), hx=Math.max(0.13, _corpSz.x*0.32), hz=Math.max(0.13, _corpSz.z*0.32);
   if(mesh.userData.mixer){ const mi=mixers.indexOf(mesh.userData.mixer); if(mi>=0) mixers.splice(mi,1); }   // freeze the pose
   mesh.traverse(o=>{ if(o.isMesh && o.material){ o.material = Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone(); } });   // own materials so the fade doesn't touch live enemies
-  const cx=mesh.position.x, cy=(mesh.position.y||0)+totalH*0.5, cz=mesh.position.z, f=Math.max(0, force||4);
+  const cx=mesh.position.x, cy=(mesh.position.y||0)+hy, cz=mesh.position.z, f=Math.max(0, force||4);
   let rb;
   try{
     rb=physWorld.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(cx,cy,cz)
-      .setLinvel((dirx||0)*f, Math.abs(diry||0)*f*0.5 + f*0.45, (dirz||0)*f)
-      .setAngvel({ x:(Math.random()-0.5)*7, y:(Math.random()-0.5)*4, z:(Math.random()-0.5)*7 })
-      .setLinearDamping(0.15).setAngularDamping(0.5).setCcdEnabled(true));
-    physWorld.createCollider(RAPIER.ColliderDesc.capsule(hh, r).setFriction(0.85).setRestitution(0.1).setMass(2.2), rb);
+      .setLinvel((dirx||0)*f, Math.abs(diry||0)*f*0.5 + f*0.35, (dirz||0)*f)
+      .setAngvel({ x:(Math.random()-0.5)*2.4, y:(Math.random()-0.5)*1.6, z:(Math.random()-0.5)*2.4 })   // build 780: gentler spin
+      .setLinearDamping(0.4).setAngularDamping(2.2).setCcdEnabled(true));   // high angular damping so it settles instead of rolling
+    // build 780: a CUBOID (not a round capsule) tumbles once and lies FLAT; zero restitution = no bouncing
+    physWorld.createCollider(RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(1.1).setRestitution(0).setMass(2.4), rb);
   }catch(e){ return false; }
-  _corpses.push({ mesh, body:rb, hh:totalH*0.5, t:0, life:7 });
+  _corpses.push({ mesh, body:rb, hh:hy, t:0, life:7 });
   if(_corpses.length>RAGDOLL_MAX){ _removeCorpse(_corpses.shift()); }   // recycle the oldest
   return true;
 }

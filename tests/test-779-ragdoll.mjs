@@ -20,7 +20,12 @@ assert(/const _rag = \(gameCfg\.ragdoll && typeof spawnCorpse==='function'\) \? 
 const sc = extractFunction('spawnCorpse');
 assert(/if\(mesh\.userData\.mixer\)\{ const mi=mixers\.indexOf\(mesh\.userData\.mixer\); if\(mi>=0\) mixers\.splice\(mi,1\); \}/.test(sc), 'the animation mixer is stopped (frozen pose)');
 assert(/o\.material = Array\.isArray\(o\.material\)\?o\.material\.map\(m=>m\.clone\(\)\):o\.material\.clone\(\);/.test(sc), 'the corpse clones its materials (fading it never touches live enemies)');
-assert(/RAPIER\.ColliderDesc\.capsule\(hh, r\)/.test(sc) && /RAPIER\.RigidBodyDesc\.dynamic\(\)/.test(sc), 'a dynamic capsule body carries the corpse');
+// build 780: a CUBOID (not a round capsule) settles flat instead of rolling; zero restitution = no bouncing; high angular damping
+assert(/RAPIER\.ColliderDesc\.cuboid\(hx, hy, hz\)\.setFriction\(1\.1\)\.setRestitution\(0\)/.test(sc) && /RAPIER\.RigidBodyDesc\.dynamic\(\)/.test(sc), 'a dynamic box body carries the corpse and never bounces');
+assert(/\.setAngularDamping\(2\.2\)/.test(sc), 'high angular damping so it tumbles once and settles (no endless rolling)');
+// build 780: slump into the death clip's final pose (if the model has one) instead of an idle freeze
+assert(/setEnemyAnimState\(mesh, 'die'\);\s*\n?\s*const mx=mesh\.userData\.mixer; if\(mx\)\{ mx\.update\(5\); mx\.update\(0\); \}/.test(extractFunction('_poseDeath')), 'the corpse is posed to the end of the death clip');
+assert(/_poseDeath\(mesh\);/.test(sc), 'spawnCorpse poses the death slump before freezing');
 assert(/if\(_corpses\.length>RAGDOLL_MAX\)\{ _removeCorpse\(_corpses\.shift\(\)\); \}/.test(sc), 'concurrent corpses are capped (oldest recycled)');
 
 // updateCorpses: mesh rigidly follows the body (feet offset), then fades + despawns
