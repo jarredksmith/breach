@@ -21,7 +21,7 @@ const _sanitizeHud = new Function('HUD_TOGGLES','HUD_FONTS','HUD_ELEMENTS','DEFA
   for(const e of HUD_EL){ eq(d.el[e.k].s,1,'default size 1: '+e.k); eq(d.el[e.k].dx,0,'default dx 0: '+e.k); eq(d.el[e.k].accent,'','no tint by default: '+e.k); }
   eq(_sanitizeHud({el:{health:{s:99}}}).el.health.s, 2.5, 'size clamped high');
   eq(_sanitizeHud({el:{health:{s:0.01}}}).el.health.s, 0.4, 'size clamped low');
-  eq(_sanitizeHud({el:{ammo:{dx:9999}}}).el.ammo.dx, 400, 'offset clamped');
+  eq(_sanitizeHud({el:{ammo:{dx:9999}}}).el.ammo.dx, 2000, 'offset clamped (build 784: ±2000 so it reaches anywhere)');
   eq(_sanitizeHud({el:{ammo:{dx:12.7}}}).el.ammo.dx, 13, 'offset rounded to px');
   eq(_sanitizeHud({el:{score:{accent:'#abc'}}}).el.score.accent, '#abc', 'a valid tint is kept');
   eq(_sanitizeHud({el:{score:{accent:'nope'}}}).el.score.accent, '', 'a bad tint is dropped');

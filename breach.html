@@ -6099,7 +6099,7 @@ function _sanitizeHud(h){
   for(const k of HUD_TOGGLES) out.hide[k] = !!(h.hide && h.hide[k]);
   const clampN=(v,lo,hi,d)=>{ v=+v; return isNaN(v)?d:Math.max(lo,Math.min(hi,v)); };
   for(const e of HUD_ELEMENTS){ const o=(h.el && h.el[e.k]) || {};
-    out.el[e.k] = { s:clampN(o.s,0.4,2.5,1), dx:Math.round(clampN(o.dx,-400,400,0)), dy:Math.round(clampN(o.dy,-400,400,0)), accent:(typeof o.accent==='string' && /^#[0-9a-fA-F]{3,8}$/.test(o.accent))?o.accent:'', font:fnt(o.font,''), op:clampN(o.op,0,1,1) };
+    out.el[e.k] = { s:clampN(o.s,0.4,2.5,1), dx:Math.round(clampN(o.dx,-2000,2000,0)), dy:Math.round(clampN(o.dy,-2000,2000,0)), accent:(typeof o.accent==='string' && /^#[0-9a-fA-F]{3,8}$/.test(o.accent))?o.accent:'', font:fnt(o.font,''), op:clampN(o.op,0,1,1) };   // build 784: ±2000 so elements reach anywhere on the HUD (was ±400)
   }
   return out;
 }
@@ -16022,7 +16022,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 783 · 2026-06-29';
+const BUILD_VERSION = 'build 784 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -21001,8 +21001,8 @@ function renderHudPanel(){
   { const sel=document.createElement('select'); sel.style.cssText='flex:0 0 auto;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:11px;'; for(const e of HUD_ELEMENTS){ const op=document.createElement('option'); op.value=e.k; op.textContent=e.label; if(e.k===_hudElSel) op.selected=true; sel.appendChild(op); } sel.onchange=()=>{ _hudElSel=sel.value; renderHudPanel(); }; row('Element', sel); }
   const slider=(label,prop,min,max,step,unit)=>{ const rr=document.createElement('input'); rr.type='range'; rr.min=String(min); rr.max=String(max); rr.step=String(step); rr.value=String(o[prop]); rr.style.cssText='flex:1 1 auto;accent-color:var(--accent);max-width:110px;'; const nn=document.createElement('span'); nn.style.cssText='flex:0 0 auto;width:42px;text-align:right;color:#9fdcc9;'; const fmt=()=> (unit==='%'?Math.round(o[prop]*100)+'%':(o[prop]+(unit||''))); nn.textContent=fmt(); rr.addEventListener('pointerdown',()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); }); rr.oninput=()=>{ o[prop]=+rr.value; nn.textContent=fmt(); commit(); }; const r=row(label, rr); r.appendChild(nn); };
   slider('Size','s',0.4,2.5,0.05,'%');
-  slider('X offset','dx',-400,400,2,'px');
-  slider('Y offset','dy',-400,400,2,'px');
+  slider('X offset','dx',-2000,2000,2,'px');
+  slider('Y offset','dy',-2000,2000,2,'px');
   slider('Opacity','op',0,1,0.05,'%');
   if(eDef.text){ const sel=document.createElement('select'); sel.style.cssText='flex:0 0 auto;max-width:140px;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 4px;font-size:11px;'; const inh=document.createElement('option'); inh.value=''; inh.textContent='(inherit HUD font)'; sel.appendChild(inh); for(const f of HUD_FONTS){ const op2=document.createElement('option'); op2.value=f; op2.textContent=f; op2.style.fontFamily="'"+f+"'"; sel.appendChild(op2); } sel.value=o.font||''; sel.onchange=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); o.font=sel.value; commit(); }; row('Font', sel); }
   { const wrap2=document.createElement('div'); wrap2.style.cssText='display:flex;align-items:center;gap:6px;flex:0 0 auto;'; const ci=document.createElement('input'); ci.type='color'; ci.value=o.accent||hudCfg.accent||'#38f5b5'; ci.style.cssText='width:36px;height:22px;padding:0;border:1px solid #2a3a42;border-radius:4px;background:#0c1418;cursor:pointer;'; ci.oninput=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); o.accent=ci.value; commit(); }; const cl=document.createElement('button'); cl.textContent='clear'; cl.title='Use the global accent for this element'; cl.style.cssText='font-size:10px;padding:1px 6px;'; cl.onclick=()=>{ if(typeof pushUndoSnapshot==='function') pushUndoSnapshot(); o.accent=''; commit(); }; wrap2.appendChild(ci); wrap2.appendChild(cl); row('Tint', wrap2); }
@@ -21035,8 +21035,8 @@ function _wireHudDrag(){
     dom.addEventListener('pointermove', (ev)=>{
       if(!drag) return;
       const o = hudCfg.el[e.k]; if(!o) return;
-      o.dx = Math.max(-400, Math.min(400, Math.round(drag.dx + (ev.clientX - drag.x))));
-      o.dy = Math.max(-400, Math.min(400, Math.round(drag.dy + (ev.clientY - drag.y))));
+      o.dx = Math.max(-2000, Math.min(2000, Math.round(drag.dx + (ev.clientX - drag.x))));
+      o.dy = Math.max(-2000, Math.min(2000, Math.round(drag.dy + (ev.clientY - drag.y))));
       if(typeof applyHudCfg==='function') applyHudCfg(); _levelDirty=true;
     });
     const end=()=>{ if(!drag) return; drag=null; if(typeof renderHudPanel==='function') renderHudPanel(); };   // refresh the X/Y sliders to the dropped position

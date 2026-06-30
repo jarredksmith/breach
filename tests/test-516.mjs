@@ -12,8 +12,8 @@ assert(/dom\.dataset\.hudDragWired/.test(wd), 'each element is wired once (per-e
 assert(/for\(const e of HUD_ELEMENTS\)\{[\s\S]*?dom\.addEventListener\('pointerdown'/.test(wd), 'each HUD element gets a pointerdown handler');
 assert(/if\(!document\.body\.classList\.contains\('hudPreview'\)\) return;/.test(wd), 'dragging only acts while the HUD editor mode is showing');
 assert(/drag = \{ x:ev\.clientX, y:ev\.clientY, dx:o\.dx\|\|0, dy:o\.dy\|\|0 \};/.test(wd), 'drag captures the start offset');
-assert(/o\.dx = Math\.max\(-400, Math\.min\(400, Math\.round\(drag\.dx \+ \(ev\.clientX - drag\.x\)\)\)\);/.test(wd), 'pointer delta updates dx (clamped)');
-assert(/o\.dy = Math\.max\(-400, Math\.min\(400, Math\.round\(drag\.dy \+ \(ev\.clientY - drag\.y\)\)\)\);/.test(wd), 'pointer delta updates dy (clamped)');
+assert(/o\.dx = Math\.max\(-2000, Math\.min\(2000, Math\.round\(drag\.dx \+ \(ev\.clientX - drag\.x\)\)\)\);/.test(wd), 'pointer delta updates dx (clamped ±2000, build 784)');
+assert(/o\.dy = Math\.max\(-2000, Math\.min\(2000, Math\.round\(drag\.dy \+ \(ev\.clientY - drag\.y\)\)\)\);/.test(wd), 'pointer delta updates dy (clamped ±2000, build 784)');
 assert(/if\(typeof applyHudCfg==='function'\) applyHudCfg\(\); _levelDirty=true;/.test(wd), 'the drag applies live + marks the level dirty');
 assert(/_hudElSel = e\.k;/.test(wd), 'dragging focuses that element in the panel');
 assert(/const end=\(\)=>\{ if\(!drag\) return; drag=null; if\(typeof renderHudPanel==='function'\) renderHudPanel\(\); \};/.test(wd), 'release refreshes the panel sliders');
