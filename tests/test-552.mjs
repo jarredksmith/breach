@@ -51,6 +51,15 @@ assert(/player\.yaw \+= _rd \* Math\.min\(1, dt\*2\.2\);/.test(src), 'the look h
 assert(/if\(drivingCar && mx\) drivingCar\.userData\._lookCd = 0\.6;/.test(src), 'moving the mouse pauses the recenter (free orbit while you look)');
 assert(/e\.code==='KeyV'[\s\S]*?_carFollowOverride = !_carFollowMode\(drivingCar\)/.test(src), 'V toggles follow-cam vs free orbit live');
 assert(/<b>Camera follows the car<\/b>/.test(src), 'the editor exposes the follow-cam toggle');
+
+// --- build 766: "press E to drive" appears within enterDist of ANY part of the model (footprint), + force-exit on editor/unload ---
+assert(/enterDist:\(v\.enterDist==null\?2\.5:Math\.max\(0\.5,Math\.min\(12,\+v\.enterDist\|\|0\)\)\)/.test(extractFunction('vehicleApply')), 'vehicleApply stores the enter radius (default 2.5)');
+assert(/if\(V\.enterDist!=null && V\.enterDist!==2\.5\) e\.veh\.enterDist=V\.enterDist;/.test(src), 'enter radius serialized when non-default');
+assert(/const dx=Math\.max\(bx\.min\.x-px, 0, px-bx\.max\.x\), dz=Math\.max\(bx\.min\.z-pz, 0, pz-bx\.max\.z\);/.test(src), 'distance is measured to the model footprint (box), not its origin');
+assert(/const rad=\(o\.userData\.vehicle\.enterDist!=null\?Math\.max\(0\.5,\+o\.userData\.vehicle\.enterDist\):2\.5\);/.test(src) && /if\(d<rad && d<bd\)/.test(src), 'the prompt shows within the enter radius of any part');
+assert(/row\('Enter radius \(m\)','enterDist', 0\.5, 12, 0\.5, 1\)/.test(src), 'the editor exposes an Enter radius slider');
+assert(/if\(!editorOpen && drivingCar && typeof exitCar==='function'\) exitCar\(\);/.test(extractFunction('toggleEditor')), 'opening the editor forces you out of the car (no stuck speedo)');
+assert(/addEventListener\('pagehide', \(\)=>\{ try\{ if\(drivingCar && typeof exitCar==='function'\) exitCar\(\);/.test(src), 'leaving the page (refresh/close) forces you out of the car');
 assert(/!o\.userData\.vehicle/.test(extractFunction('instanceEligible')), 'a vehicle is never instanced (so it renders where it is driven)');
 
 // --- build 712: Phase 2 wall collision — each axis of the move is blocked if a wall is within reach (slide), guarded ---
