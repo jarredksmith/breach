@@ -15038,8 +15038,12 @@ function _carShoveDynamics(o, speed, tx, tz, half, dt){   // tx,tz = unit TRAVEL
       if(frontPen<=sidePen){ penImp=frontPen; pxx=tx; pzz=tz; }                       // shallowest exit is the front -> push forward
       else { const s=side>=0?1:-1; penImp=sidePen; pxx=rxu*s; pzz=rzu*s; }            // shallowest exit is a side -> squirt it out sideways
     }
-    _carShoveDir.x = tx*0.5 + pxx*0.7; _carShoveDir.y = 0; _carShoveDir.z = tz*0.5 + pzz*0.7;
-    if(typeof pushDynamic==='function') pushDynamic(p, _carShoveDir, (sp*14 + penImp*50)*m*dt, p.position);   // speed knock + depth-spring; pushDynamic adds an upward bias for the launch arc
+    _carShoveDir.x = tx*0.5 + pxx*0.7; _carShoveDir.z = tz*0.5 + pzz*0.7;
+    // build 777: the upward arc scales with SPEED ONLY (and is small), so a slow roll squirts the barrel ASIDE instead of
+    // the deep-penetration spring flinging it up onto the hood. We cancel pushDynamic's fixed +0.25 bias via _carShoveDir.y.
+    const _hor=(sp*14 + penImp*50)*m*dt, _ver=Math.min(sp*3.5, 5)*m*dt;
+    _carShoveDir.y = (_hor>1e-6 ? _ver/_hor : 0) - 0.25;
+    if(typeof pushDynamic==='function') pushDynamic(p, _carShoveDir, _hor, p.position);   // horizontal knock + depth-spring; speed-only vertical arc
     // build 734: equal-and-opposite — a prop pushes back on the car, scaled by its mass and how head-on the contact is.
     reaction += m * Math.max(0, nx*tx + nz*tz);
   }
@@ -15966,7 +15970,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 776 · 2026-06-29';
+const BUILD_VERSION = 'build 777 · 2026-06-29';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

@@ -81,7 +81,7 @@ assert(/const sp = Math\.abs\(speed\); if\(sp < 0\.2\) return 0;/.test(extractFu
 // build 776: the shove centres on the footprint (origin + offset), so an off-centre model origin doesn't shift the collision
 assert(/const cx=o\.position\.x \+ tx\*_oz \+ rxu\*_ox, cy=o\.position\.y \+ \(half\.oy\|\|0\), cz=o\.position\.z \+ tz\*_oz \+ rzu\*_ox;/.test(extractFunction('_carShoveDynamics')), 'the shove is centred on the hit-box footprint, matching the orange outline');
 assert(/const frontPen=\(hd\+pr\)-ahead, sidePen=\(hw\+pr\)-Math\.abs\(side\);/.test(extractFunction('_carShoveDynamics')), 'penetration is measured into the oriented footprint (front + side)');
-assert(/\(sp\*14 \+ penImp\*50\)\*m\*dt/.test(extractFunction('_carShoveDynamics')), 'the impulse is a speed knock plus a depth spring');
+assert(/const _hor=\(sp\*14 \+ penImp\*50\)\*m\*dt, _ver=Math\.min\(sp\*3\.5, 5\)\*m\*dt;/.test(extractFunction('_carShoveDynamics')), 'horizontal = speed knock + depth spring; vertical arc scales with speed only (build 777)');
 // executable: a slow car still shoves a barrel sunk into its footprint; a near-parked one rests
 { const calls=[];
   const dyn=[{ position:{x:1,y:0,z:0}, userData:{ mass:2, physInfo:{radius:0.4}, phys:{ body:{} } } }];
@@ -215,7 +215,7 @@ const sh = extractFunction('_carShoveDynamics');
 assert(/const b = p\.userData && p\.userData\.phys && p\.userData\.phys\.body; if\(!b\) continue;/.test(sh), 'only dynamic props with a physics body are shoved');
 assert(/if\(sp < 0\.2\) return 0;/.test(sh), 'a near-stopped car does not shove (so it can rest against props); build 769 lowered the gate to a crawl');
 assert(/const ahead=dx\*tx \+ dz\*tz; if\(ahead < -0\.3\) continue;/.test(sh), 'props behind the travel direction are not dragged');
-assert(/pushDynamic\(p, _carShoveDir, \(sp\*14 \+ penImp\*50\)\*m\*dt, p\.position\)/.test(sh), 'shove impulse = speed knock + penetration spring, scaled by mass');
+assert(/pushDynamic\(p, _carShoveDir, _hor, p\.position\)/.test(sh) && /_carShoveDir\.y = \(_hor>1e-6 \? _ver\/_hor : 0\) - 0\.25;/.test(sh), 'shove pushes horizontally with a speed-only vertical arc (no launch onto the hood, build 777)');
 assert(/if\(typeof NET==='undefined' \|\| NET\.mode!=='client'\)\{ const _sgn=Math\.sign\(r\.speed\)\|\|1; const _react=_carShoveDynamics\(o, r\.speed, fx\*_sgn, fz\*_sgn, _carHitExtents\(o\), dt\);/.test(du), 'the host/solo shoves dynamic props each frame along the travel direction (using the hit footprint)');
 
 // --- build 734: Newton's 3rd law — a heavy prop shoves the car back (mass matters both ways) ---
