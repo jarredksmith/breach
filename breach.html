@@ -15033,6 +15033,52 @@ function _buildWheelCache(o, cfg){
   }});
   o.userData._wheels=list; o.userData._wheelSteer=0;
 }
+// build 801: AUTO-DETECT wheels + the steered (front) subset from a model's named parts. Tries names first (wheel / tyre /
+// tire), then falls back to GEOMETRY — low, chunky, modest-sized parts near the base are wheels; the axle is whichever axis
+// the wheel is thinnest along; the front pair is the extreme along the longer wheelbase axis (or a 'front'-named subset).
+// Returns { wheels, wheelsFront, wheelAxis, found } so the editor can fill the fields; the author can still tweak.
+function _autoDetectWheels(o){
+  if(!o) return null;
+  o.updateMatrixWorld(true);
+  const _b=new THREE.Box3(), _s=new THREE.Vector3(), _c=new THREE.Vector3(), parts=[];
+  o.traverse(n=>{ if(n===o || !n.name) return; _b.setFromObject(n); if(_b.isEmpty()) return; _b.getSize(_s); _b.getCenter(_c);
+    parts.push({ name:n.name, cx:_c.x, cy:_c.y, cz:_c.z, sx:_s.x, sy:_s.y, sz:_s.z }); });
+  if(!parts.length) return { wheels:'', wheelsFront:'', wheelAxis:'x', found:0 };
+  const full=new THREE.Box3().setFromObject(o), fSz=new THREE.Vector3(); full.getSize(fSz);
+  let wheels='', wheelParts=[];
+  for(const k of ['wheel','tyre','tire']){ const m=parts.filter(p=>p.name.toLowerCase().indexOf(k)>=0); if(m.length){ wheels=k; wheelParts=m; break; } }
+  if(!wheelParts.length){   // geometric fallback for cryptically-named parts
+    const yLow=full.min.y + fSz.y*0.42, bigDim=Math.max(fSz.x, fSz.z);
+    const cand=parts.filter(p=>{ if(p.cy>yLow) return false; const mx=Math.max(p.sx,p.sy,p.sz), mn=Math.min(p.sx,p.sy,p.sz); if(mx>bigDim*0.5) return false; if(mn/Math.max(1e-4,mx)<0.28) return false; return true; });
+    if(cand.length>=3){ wheelParts=cand; wheels=cand.map(p=>p.name).join(', '); }
+  }
+  if(!wheelParts.length) return { wheels:'', wheelsFront:'', wheelAxis:'x', found:0 };
+  // axle = the axis the representative wheel is THINNEST along (a wheel is a thin disc across its axle)
+  const rep=wheelParts[0], dims=[['x',rep.sx],['y',rep.sy],['z',rep.sz]].sort((a,b)=>a[1]-b[1]);
+  const wheelAxis=dims[0][0];
+  // front subset: a 'front'-named subset if present, else the extreme along the longer wheelbase axis
+  let wheelsFront='';
+  if(wheelParts.some(p=>/front/i.test(p.name)) && !wheelParts.every(p=>/front/i.test(p.name))) wheelsFront='front';
+  else if(wheelParts.length>=2){
+    const xs=wheelParts.map(p=>p.cx), zs=wheelParts.map(p=>p.cz);
+    const spreadX=Math.max.apply(null,xs)-Math.min.apply(null,xs), spreadZ=Math.max.apply(null,zs)-Math.min.apply(null,zs);
+    const key=spreadZ>=spreadX?'cz':'cx';
+    const sorted=wheelParts.slice().sort((a,b)=>a[key]-b[key]);
+    const half=Math.max(1, Math.floor(sorted.length/2));
+    wheelsFront=sorted.slice(0,half).map(p=>p.name).join(', ');   // toward -axis = front by default (flip via Model facing if reversed)
+  }
+  return { wheels, wheelsFront, wheelAxis, found:wheelParts.length };
+}
+// build 801: briefly glow a named model part so you can SEE which part a name refers to (click a "Detected parts" chip).
+let _partFlash=null;
+function _flashModelPart(root, name){
+  if(_partFlash){ for(const r of _partFlash) if(r.mat && r.mat.emissive) r.mat.emissive.setHex(r.hex); _partFlash=null; }
+  if(!root || !name) return;
+  const saved=[];
+  root.traverse(n=>{ if(n.name===name && n.traverse) n.traverse(m=>{ if(m.isMesh){ const mats=Array.isArray(m.material)?m.material:[m.material]; for(const mat of mats){ if(mat && mat.emissive){ saved.push({ mat, hex:mat.emissive.getHex() }); mat.emissive.setHex(0x2f7bff); } } } }); });
+  if(!saved.length) return; _partFlash=saved;
+  setTimeout(()=>{ if(_partFlash===saved){ for(const r of saved) if(r.mat && r.mat.emissive) r.mat.emissive.setHex(r.hex); _partFlash=null; } }, 1200);
+}
 const _wqSpin=new THREE.Quaternion(), _wqSteer=new THREE.Quaternion(), _wAxle=new THREE.Vector3(), _wUp=new THREE.Vector3(0,1,0), _wpA=new THREE.Vector3(), _wpB=new THREE.Vector3();
 function _updateWheels(o, cfg, speed, steerFrac, dt){
   if(!cfg || !cfg.wheels){ if(o.userData._wheels) o.userData._wheels=null; return; }
@@ -16165,7 +16211,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 800 · 2026-06-30';
+const BUILD_VERSION = 'build 801 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -23706,11 +23752,23 @@ function renderEditorFields(){
           }
           // build 762: procedural wheels — spin/steer separate wheel meshes by name (no baked animation needed)
           { const wh=document.createElement('div'); wh.className='hint'; wh.style.margin='10px 0 1px'; wh.innerHTML='<b>Wheels (procedural)</b> — spin + steer the model’s wheel meshes by name. No animation clips needed; works on any car whose wheels are separate parts.'; vBody.appendChild(wh);
-            // list the model's named parts so the author knows what to type
+            const _txtRefs={};
+            const _addToken=(key,tok)=>{ const cur=(V[key]||'').split(/[ ,]+/).map(s=>s.trim()).filter(Boolean); if(cur.indexOf(tok)<0){ cur.push(tok); V[key]=cur.join(', '); if(_txtRefs[key]) _txtRefs[key].value=V[key]; } };   // build 801: click a part chip to build the matcher
+            // build 801: AUTO-DETECT — scan the model's parts (names, then geometry) and fill the wheel + steered fields
+            { const ad=document.createElement('button'); ad.textContent='✨ Auto-detect wheels'; ad.title='Guess the wheel meshes + the steered (front) pair from the model’s named parts / layout, and pick the spin axle. You can still edit the fields after.'; ad.style.cssText='width:100%;margin:4px 0 2px;padding:5px 6px;font-size:12px;border-radius:5px;cursor:pointer;border:1px solid rgba(122,215,255,0.5);background:rgba(122,215,255,0.14);color:#eafff7;';
+              ad.onclick=()=>{ const r=(typeof _autoDetectWheels==='function')?_autoDetectWheels(sel):null;
+                if(!r || !r.found){ if(typeof flashToast==='function') flashToast('No wheels found — this model has no separate wheel parts'); return; }
+                pushUndoSnapshot(); V.wheels=r.wheels; V.wheelsFront=r.wheelsFront; V.wheelAxis=r.wheelAxis; renderEditorFields();
+                if(typeof flashToast==='function') flashToast('Detected '+r.found+' wheels (axle '+String(r.wheelAxis).toUpperCase()+') — check the front pair, flip Model facing if steering is reversed'); };
+              vBody.appendChild(ad); }
+            // list the model's named parts as CLICKABLE chips — click adds to Wheels + glows the part in the scene; Shift-click adds to Front
             const _names=[]; sel.traverse(n=>{ if(n!==sel && n.name && _names.indexOf(n.name)<0) _names.push(n.name); });
-            if(_names.length){ const pl=document.createElement('div'); pl.className='hint'; pl.style.cssText='margin:1px 0 4px;font-size:10px;opacity:.8;max-height:54px;overflow:auto;'; pl.innerHTML='<b>Detected parts:</b> '+_names.slice(0,60).map(n=>'<span style="color:#9fe6cf">'+n.replace(/[<>&]/g,'')+'</span>').join(', '); vBody.appendChild(pl); }
+            if(_names.length){ const pl=document.createElement('div'); pl.className='hint'; pl.style.cssText='margin:1px 0 4px;font-size:10px;opacity:.9;max-height:74px;overflow:auto;'; const lead=document.createElement('span'); lead.innerHTML='<b>Detected parts</b> <span style="opacity:.7">(click = add to Wheels + highlight · Shift-click = Front):</span> '; pl.appendChild(lead);
+              _names.slice(0,80).forEach((nm,i)=>{ const chip=document.createElement('span'); chip.textContent=nm; chip.title='Click to add to Wheels + highlight in the scene · Shift-click to add to Front'; chip.style.cssText='display:inline-block;margin:1px 3px 1px 0;padding:1px 6px;border-radius:4px;background:rgba(56,245,181,0.12);border:1px solid rgba(56,245,181,0.3);color:#9fe6cf;cursor:pointer;';
+                chip.onclick=(ev)=>{ if(typeof _flashModelPart==='function') _flashModelPart(sel, nm); _addToken(ev.shiftKey?'wheelsFront':'wheels', nm); if(typeof _levelDirty!=='undefined') _levelDirty=true; }; pl.appendChild(chip); });
+              vBody.appendChild(pl); }
             else { const pl=document.createElement('div'); pl.className='hint'; pl.style.cssText='margin:1px 0 4px;font-size:10px;color:#ffd27f;'; pl.textContent='This model exposes no named sub-parts — procedural wheels need a model whose wheels are separate, named meshes.'; vBody.appendChild(pl); }
-            const txt=(label,key,ph)=>{ const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.cssText='min-width:96px;flex:0 0 auto;'; const ti=document.createElement('input'); ti.type='text'; ti.placeholder=ph; ti.value=V[key]||''; ti.style.cssText='flex:1;min-width:0;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:12px;'; ti.addEventListener('focus',()=>pushUndoSnapshot()); ti.onchange=()=>{ V[key]=ti.value.trim(); }; l.appendChild(sp); l.appendChild(ti); vBody.appendChild(l); };
+            const txt=(label,key,ph)=>{ const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:7px;color:#bfe6ff;font-size:12px;margin-top:5px;'; const sp=document.createElement('span'); sp.textContent=label; sp.style.cssText='min-width:96px;flex:0 0 auto;'; const ti=document.createElement('input'); ti.type='text'; ti.placeholder=ph; ti.value=V[key]||''; ti.style.cssText='flex:1;min-width:0;background:#0c1418;border:1px solid #2a3a42;color:#cfeee2;border-radius:4px;padding:2px 5px;font-size:12px;'; ti.addEventListener('focus',()=>pushUndoSnapshot()); ti.onchange=()=>{ V[key]=ti.value.trim(); }; l.appendChild(sp); l.appendChild(ti); vBody.appendChild(l); _txtRefs[key]=ti; };
             txt('Wheel names','wheels','e.g. wheel, tire (matches any part containing this)');
             txt('Front (steered)','wheelsFront','e.g. front, _fl, _fr (subset that turns)');
             { const sh=document.createElement('div'); sh.className='hint'; sh.style.margin='6px 0 2px'; sh.textContent='Spin axle'; vBody.appendChild(sh);

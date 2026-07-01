@@ -432,7 +432,7 @@ assert(/if\(w\.front && \(cfg\.wheelSteer==null\?28:cfg\.wheelSteer\)>0\)\{ _wqS
 assert(/_updateWheels\(o, cfg, r\.speed, _sf, dt\)/.test(du), 'driveUpdate spins/steers the wheels each frame');
 assert(/if\(V\.wheels\) e\.veh\.wheels=V\.wheels;[\s\S]*?if\(V\.wheelSpin!=null && V\.wheelSpin!==1\) e\.veh\.wheelSpin=V\.wheelSpin;/.test(src), 'wheel config serializes (non-default only)');
 assert(/txt\('Wheel names','wheels'/.test(src) && /row\('Steer angle \(°\)','wheelSteer'/.test(src) && /row\('Spin rate','wheelSpin'/.test(src), 'the editor exposes the wheel-name + steer + spin controls');
-assert(/<b>Detected parts:<\/b>/.test(src), 'the editor lists the model’s named parts so you know what to type');
+assert(/<b>Detected parts<\/b>/.test(src), 'the editor lists the model’s named parts (build 801: as clickable chips) so you know what to type');
 // build 763: pivot correction — spin/steer about each wheel's geometric centre so wheels don't orbit/fly off
 assert(/const m=n\.worldToLocal\(_wCtr\.clone\(\)\);/.test(extractFunction('_buildWheelCache')) && /const pivot=new THREE\.Vector3\(m\.x\*n\.scale\.x, m\.y\*n\.scale\.y, m\.z\*n\.scale\.z\);/.test(extractFunction('_buildWheelCache')), 'each wheel caches its geometric-centre pivot offset');
 assert(/_wpA\.copy\(w\.pivot\)\.applyQuaternion\(w\.baseQ\); _wpB\.copy\(w\.pivot\)\.applyQuaternion\(w\.obj\.quaternion\);\s*\n\s*w\.obj\.position\.copy\(w\.basePos\)\.add\(_wpA\)\.sub\(_wpB\);/.test(extractFunction('_updateWheels')), 'the wheel position is corrected so it rotates about its centre, not its origin');
