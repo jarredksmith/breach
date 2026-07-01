@@ -141,7 +141,7 @@ assert(/const _cap = \(ceilY!=null\) \? ceilY : Infinity;/.test(src) && /if\(h\.
 // build 717: ramp-aware vertical — 4-corner ground sample, surface tilt, gravity + launch
 assert(/const gF=_carGroundY\(o\.position\.x\+hx\*_hd[\s\S]*?_ceil\);[\s\S]*?const gB=_carGroundY\(o\.position\.x-hx\*_hd/.test(src), 'samples front + back ground (heading frame) to tilt to the ramp');
 assert(/_vy -= GRAV\*0\.85\*dt;/.test(src), 'the car has gravity (so it can leave a ramp)');
-assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb,7\):0;/.test(src), 'a real ramp banks launch velocity (capped); a sudden spike (wall ram) does not');
+assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb\*1\.15,15\):0;/.test(src), 'build 790: a real ramp banks launch velocity — bigger air (cap 15); a sudden spike (wall ram) does not');
 assert(/_carEuler\.set\(o\.userData\.carPitch \+ o\.userData\.leanPitch, carYaw, o\.userData\.carRoll \+ o\.userData\.leanRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface + suspension lean (build 729)');
 
 // --- serialize + restore (compact veh) at all three prop-load sites ---
@@ -262,7 +262,7 @@ assert(/row\('Grip','grip', 1, 12, 0\.5, 1\)/.test(src), 'editor exposes a Grip 
 
 // --- build 726/727: tilt clamped by ANGLE (no roll-over, correct ramp pitch at any length) + handbrake brakes ---
 assert(/const _TP=0\.72, _TR=0\.42;/.test(du), 'pitch is allowed steep (ramps); roll is capped tighter (a wall leans, never flips)');
-assert(/let _tp=_grounded\?Math\.atan2\(gF-gB, 2\*_hd\):0, _tr=_grounded\?Math\.atan2\(gR-gL, 2\*_hw\):0;/.test(du), 'tilt is the raw surface slope (no height clamp that throttled a long vehicle on a ramp)');
+assert(/let _tp=_grounded\?Math\.atan2\(gF-gB, 2\*_hd\):Math\.atan2\(_vy, Math\.max\(4,Math\.abs\(r\.speed\)\)\), _tr=_grounded\?Math\.atan2\(gR-gL, 2\*_hw\):0;/.test(du), 'tilt is the raw surface slope when grounded; airborne the nose follows the flight arc (build 790)');
 assert(/_tp=Math\.max\(-_TP,Math\.min\(_TP,_tp\)\); _tr=Math\.max\(-_TR,Math\.min\(_TR,_tr\)\);/.test(du), 'final pitch/roll is angle-capped so the car never tips over and buries itself');
 assert(/if\(handbrake && Math\.abs\(r\.speed\)>0\.1\)\{ const _bk=1 - Math\.min\(0\.85, 3\.2\*dt\); o\.userData\.carSpeed\*=_bk; r\.speed\*=_bk; \}/.test(du), 'the handbrake actually brakes (slows the car), not just loosens grip');
 

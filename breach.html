@@ -15332,17 +15332,28 @@ function driveUpdate(dt){
   if(_rest > _cy + _budget) _rest = _cy + _budget;
   let _vy=o.userData.carVelY||0; const _climb=(_rest-_cy)/dt;
   _vy -= GRAV*0.85*dt; let _ny=_cy+_vy*dt; const _SNAP=Math.max(0.45,_h.hh);
-  const _launch=(_climb>0.8 && _climb<22)?Math.min(_climb,7):0;   // a real ramp banks launch velocity (capped); a sudden spike (wall ram) does NOT launch
+  const _launch=(_climb>0.8 && _climb<22)?Math.min(_climb*1.15,15):0;   // build 790: a real ramp banks launch velocity — bigger air (was capped at 7); a sudden spike (wall ram) still does NOT launch
+  const _impVy=_vy;                                               // build 790: descent speed at the moment of contact (for landing feedback)
   if(_ny<=_rest){ _ny=_rest; _vy=_launch; }                       // grounded: bank ramp-climb speed as launch velocity
   else if(_vy<=0 && (_ny-_rest)<_SNAP){ _ny=_rest; _vy=0; }       // hug the ground over small downhill drops (no micro-hops)
   o.position.y=_ny; o.userData.carVelY=_vy;
+  const _wasAir=o.userData._carGrounded===false;                  // build 790: remember last frame's state to detect a touchdown
   const _grounded=(_ny-_rest)<0.12; o.userData._carGrounded=_grounded;   // build 754: persist so next frame's brake-SFX check can suppress a mid-air screech
+  // build 790: LANDING — touch down from a real fall and the suspension compresses (nose dips) with a camera jolt scaled by
+  // the impact speed, so a jump lands with weight instead of teleporting flat onto the ground.
+  if(_grounded && _wasAir && _impVy < -6){ const _fall=Math.min(1,(-_impVy-6)/18);
+    o.userData.hitShake=Math.max(o.userData.hitShake||0, 0.03 + _fall*0.10);
+    o.userData.leanPitch=(o.userData.leanPitch||0) - 0.11*_fall;   // dip on contact; the lean ease below springs it back
+    if(_fall>0.35 && typeof playSample==='function') playSample(curSounds().carBrake);   // a heavy landing thud (reuses the tyre/brake clip)
+  }
   // build 727: clamp the tilt by ANGLE (slope), not by sample height. The build-726 height clamp throttled the pitch of a
   // LONG vehicle (a camper) on a ramp, so it under-tilted, dug into the ramp, sank, and _carWall then false-blocked it (stuck
   // at 0). Clamping the final angle instead gives correct ramp pitch at any length, while a sideways wall still can't flip it:
   // pitch (front/back, where ramps live) is allowed steep; roll (sideways) is capped tighter so a wall can only lean it, not bury it.
   const _TP=0.72, _TR=0.42;   // pitch up to ~41° (steep ramps ok); roll up to ~24° (a wall leans it, never rolls it over)
-  let _tp=_grounded?Math.atan2(gF-gB, 2*_hd):0, _tr=_grounded?Math.atan2(gR-gL, 2*_hw):0;
+  // build 790: airborne, the nose FOLLOWS THE FLIGHT ARC (atan2 of vertical vs forward speed) — nose up on the way up,
+  // nosing over as it falls — instead of snapping flat and belly-flopping. Roll still eases level in the air.
+  let _tp=_grounded?Math.atan2(gF-gB, 2*_hd):Math.atan2(_vy, Math.max(4,Math.abs(r.speed))), _tr=_grounded?Math.atan2(gR-gL, 2*_hw):0;
   _tp=Math.max(-_TP,Math.min(_TP,_tp)); _tr=Math.max(-_TR,Math.min(_TR,_tr));
   const _k=Math.min(1, dt*9);
   o.userData.carPitch=(o.userData.carPitch||0)+(_tp-(o.userData.carPitch||0))*_k;   // ease (also levels out in the air)
@@ -16054,7 +16065,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 789 · 2026-06-30';
+const BUILD_VERSION = 'build 790 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
