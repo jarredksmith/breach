@@ -309,7 +309,7 @@ assert(/_updateHeadlights\(o, cfg\)/.test(du), 'driveUpdate positions the headli
 assert(/function _headlightsOff\(\)\{ if\(_headL\) _headL\.intensity=0; if\(_headR\) _headR\.intensity=0; \}/.test(src), 'off = intensity 0, the lights stay in the scene (no recompile stall)');
 assert(/sp\.visible=true;/.test(extractFunction('_ensureHeadlights')), 'the spotlights are always visible (intensity does the toggling)');
 assert(/if\(o\.userData\.vehicle\.headlights && typeof _ensureHeadlights==='function'\) _ensureHeadlights\(\);/.test(extractFunction('addStaticColliderFor')), 'the lights are created at deploy so the recompile is masked by load');
-assert(/_editorHeadlightPreview\(\(_se && _se\.userData && _se\.userData\.vehicle\) \? _se : null\)/.test(src), 'the editor previews the selected car’s headlights live');
+assert(/const _sv=\(_se && _se\.userData && _se\.userData\.vehicle\) \? _se : null; _editorHeadlightPreview\(_sv\);/.test(src), 'the editor previews the selected car’s headlights live');
 assert(/e\.code==='KeyH'[\s\S]*?_carHeadOn=!_carHeadOn/.test(src), 'H toggles the headlights while driving');
 assert(/_carHeadOn = \(o\.userData\.vehicle\.headStart!==false\)/.test(extractFunction('enterCar')) && /if\(typeof _headlightsOff==='function'\) _headlightsOff\(\);/.test(extractFunction('exitCar')), 'lights start per the vehicle default on enter, and go off on exit');
 // build 785: getting in a car stows the held flashlight (camera-parented, breaks on the chase cam)
