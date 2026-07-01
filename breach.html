@@ -15353,13 +15353,23 @@ function driveUpdate(dt){
   // at 0). Clamping the final angle instead gives correct ramp pitch at any length, while a sideways wall still can't flip it:
   // pitch (front/back, where ramps live) is allowed steep; roll (sideways) is capped tighter so a wall can only lean it, not bury it.
   const _TP=0.72, _TR=0.42;   // pitch up to ~41° (steep ramps ok); roll up to ~24° (a wall leans it, never rolls it over)
-  // build 790: airborne, the nose FOLLOWS THE FLIGHT ARC (atan2 of vertical vs forward speed) — nose up on the way up,
-  // nosing over as it falls — instead of snapping flat and belly-flopping. Roll still eases level in the air.
-  let _tp=_grounded?Math.atan2(gF-gB, 2*_hd):Math.atan2(_vy, Math.max(4,Math.abs(r.speed))), _tr=_grounded?Math.atan2(gR-gL, 2*_hw):0;
-  _tp=Math.max(-_TP,Math.min(_TP,_tp)); _tr=Math.max(-_TR,Math.min(_TR,_tr));
   const _k=Math.min(1, dt*9);
-  o.userData.carPitch=(o.userData.carPitch||0)+(_tp-(o.userData.carPitch||0))*_k;   // ease (also levels out in the air)
-  o.userData.carRoll =(o.userData.carRoll ||0)+(_tr-(o.userData.carRoll ||0))*_k;
+  if(_grounded){
+    // on a surface the body pitches/rolls to the slope (angle-clamped so a wall can only lean it, never bury it)
+    let _tp=Math.atan2(gF-gB, 2*_hd), _tr=Math.atan2(gR-gL, 2*_hw);
+    _tp=Math.max(-_TP,Math.min(_TP,_tp)); _tr=Math.max(-_TR,Math.min(_TR,_tr));
+    o.userData.carPitch=(o.userData.carPitch||0)+(_tp-(o.userData.carPitch||0))*_k;
+    o.userData.carRoll =(o.userData.carRoll ||0)+(_tr-(o.userData.carRoll ||0))*_k;
+  } else {
+    // build 792: AIR CONTROL — the throttle tilts the nose in the air (gas = nose up, brake/reverse = nose down) so you can
+    // level a landing or exaggerate a jump. With no throttle the nose auto-levels toward the flight arc (the build-790 arc).
+    // The tilt is bounded to ±0.9rad around that arc, so a jump can never rotate onto its roof. Steering still yaws in the air.
+    const _arc=Math.atan2(_vy, Math.max(4,Math.abs(r.speed)));
+    let _cp=(o.userData.carPitch||0) + throttle*2.2*dt;                          // player pitch input
+    _cp += (_arc-_cp)*Math.min(1, dt*(Math.abs(throttle)<0.05?3:1.1));           // drift back toward the arc (snappier when hands-off)
+    o.userData.carPitch=Math.max(_arc-0.9, Math.min(_arc+0.9, _cp));            // bounded around the arc -> never lands upside-down
+    o.userData.carRoll =(o.userData.carRoll ||0)+(0-(o.userData.carRoll ||0))*Math.min(1, dt*3);   // roll eases level in the air
+  }
   // build 729: suspension lean / weight transfer (visual) — the body rolls OUT of a corner, dives (nose down) under braking,
   // and squats (nose up) under power. Eased offsets added on top of the surface tilt; capped small so it reads as suspension.
   const _yawRate=(carYaw-_yawOld)/Math.max(1e-4,dt), _accel=(r.speed-(o.userData._prevSpeed||0))/Math.max(1e-4,dt);
@@ -16067,7 +16077,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 791 · 2026-06-30';
+const BUILD_VERSION = 'build 792 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

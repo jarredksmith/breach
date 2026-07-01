@@ -9,8 +9,9 @@ const du = extractFunction('driveUpdate');
 // 1. launch is banked from the ramp climb, bigger cap, scaled by the vehicle Launch multiplier, still rejects a wall-ram spike (>22)
 assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb\*1\.15,15\)\*_lm:0;/.test(du), 'ramp launch scales with climb (cap 15) x Launch multiplier, wall-ram spikes still excluded');
 
-// 2. airborne, the nose follows the arc: nose up while rising (+_vy), nosing over as it falls (−_vy)
-assert(/let _tp=_grounded\?Math\.atan2\(gF-gB, 2\*_hd\):Math\.atan2\(_vy, Math\.max\(4,Math\.abs\(r\.speed\)\)\)/.test(du), 'airborne pitch target follows the flight arc');
+// 2. airborne, the nose follows the arc: nose up while rising (+_vy), nosing over as it falls (−_vy). Build 792 moved this
+//    into the else-branch as the auto-level target `_arc`; air control tilts around it (see test-792).
+assert(/const _arc=Math\.atan2\(_vy, Math\.max\(4,Math\.abs\(r\.speed\)\)\);/.test(du), 'airborne pitch is anchored to the flight arc');
 // the sign is right: rising => positive (nose up), falling => negative (nose down)
 {
   const arc = (vy, sp) => Math.atan2(vy, Math.max(4, Math.abs(sp)));
