@@ -16215,7 +16215,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 805 · 2026-06-30';
+const BUILD_VERSION = 'build 806 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -22448,6 +22448,9 @@ function renderEditorFields(){
   // this pass (whichever return path it takes) has finished, before the next paint.
   const _edScroll = editorEl.scrollTop;
   queueMicrotask(()=>{ try{ if(editorEl) editorEl.scrollTop = _edScroll; }catch(e){} try{ renderLevelIssues(); }catch(e){} });
+  // build 806: clear any part-hover highlight before rebuilding. The chips' mouseleave never fires when the panel is torn
+  // down mid-hover, so an orphaned highlight would otherwise stay stuck on the mesh until a browser refresh.
+  if(typeof _clearPartHighlight==='function') _clearPartHighlight();
   if(spawnRouteEdit && (editorActive!=='spawns' || editorTargets.spawns.obj()!==spawnRouteEdit || spawnRouteEdit.userData.mark.mode!=='patrol')) spawnRouteEdit=null;   // route placement only while its patrol spawn stays selected
   editorEl.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.key===editorActive));
   const tgt = editorTargets[editorActive] || { obj(){ return null; }, code(){ return ''; } };   // zone targets (fire/jump/death) have no editorTargets entry — render as a no-op selectable
