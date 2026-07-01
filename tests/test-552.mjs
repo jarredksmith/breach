@@ -141,7 +141,7 @@ assert(/const _cap = \(ceilY!=null\) \? ceilY : Infinity;/.test(src) && /if\(h\.
 // build 717: ramp-aware vertical — 4-corner ground sample, surface tilt, gravity + launch
 assert(/const gF=_carGroundY\(o\.position\.x\+hx\*_hd[\s\S]*?_ceil\);[\s\S]*?const gB=_carGroundY\(o\.position\.x-hx\*_hd/.test(src), 'samples front + back ground (heading frame) to tilt to the ramp');
 assert(/_vy -= GRAV\*0\.85\*dt;/.test(src), 'the car has gravity (so it can leave a ramp)');
-assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb\*1\.15,15\):0;/.test(src), 'build 790: a real ramp banks launch velocity — bigger air (cap 15); a sudden spike (wall ram) does not');
+assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb\*1\.15,15\)\*_lm:0;/.test(src), 'build 790/791: a ramp banks launch velocity (cap 15) scaled by the Launch multiplier; a wall-ram spike does not');
 assert(/_carEuler\.set\(o\.userData\.carPitch \+ o\.userData\.leanPitch, carYaw, o\.userData\.carRoll \+ o\.userData\.leanRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface + suspension lean (build 729)');
 
 // --- serialize + restore (compact veh) at all three prop-load sites ---
