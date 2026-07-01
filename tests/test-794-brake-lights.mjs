@@ -33,6 +33,6 @@ assert(/if\(V\.brakeLights\)\{ e\.veh\.brakeLights=1;/.test(src), 'brake lights 
 
 // --- editor UI: a toggle + a colour picker + position sliders ---
 assert(/<b>Brake lights<\/b> — red glow at the tail when braking \/ reversing/.test(src), 'the editor has a Brake lights toggle + hint');
-assert(/row\('Size','brakeSize', 0\.12, 2, 0\.02, 1\);/.test(src) && /row\('Back \(±m\)','brakeBack', -3, 3, 0\.05, 1\);/.test(src), 'brake lights expose size + position sliders');
+assert(/row\('Size','brakeSize', 0\.12, 2, 0\.02, 1\);/.test(src) && /row\('Height \(±m\)','brakeY', -8, 8, 0\.05, 1\);/.test(src) && /row\('Back \(±m\)','brakeBack', -8, 8, 0\.05, 1\);/.test(src), 'brake lights expose size + a wide-range height/back/spread (build 800)');
 
 done('build 794: brake lights — red tail glow on braking/reverse, editor-tunable');

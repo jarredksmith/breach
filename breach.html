@@ -16165,7 +16165,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 799 · 2026-06-30';
+const BUILD_VERSION = 'build 800 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -23667,9 +23667,9 @@ function renderEditorFields(){
               ci.oninput=()=>{ V.brakeColor=parseInt(ci.value.slice(1),16); }; ci.addEventListener('focus',()=>pushUndoSnapshot());
               cl.appendChild(sp); cl.appendChild(ci); vBody.appendChild(cl); }
             row('Size','brakeSize', 0.12, 2, 0.02, 1);
-            row('Spread (±m)','brakeSep', -2, 3, 0.05, 1);
-            row('Height (±m)','brakeY', -2, 3, 0.05, 1);
-            row('Back (±m)','brakeBack', -3, 3, 0.05, 1);
+            row('Spread (±m)','brakeSep', -6, 6, 0.05, 1);
+            row('Height (±m)','brakeY', -8, 8, 0.05, 1);
+            row('Back (±m)','brakeBack', -8, 8, 0.05, 1);
           }
           { const bh=document.createElement('div'); bh.className='hint'; bh.style.margin='8px 0 1px'; bh.innerHTML='<b>Boost</b> — hold <b>Shift</b> while driving. Multiplier 1 = off.'; vBody.appendChild(bh); }
           row('Boost ×','boost', 1, 4, 0.05, 1);
