@@ -15071,14 +15071,13 @@ function _autoDetectWheels(o){
 }
 // build 801: briefly glow a named model part so you can SEE which part a name refers to (click a "Detected parts" chip).
 let _partFlash=null;
-function _flashModelPart(root, name){
-  if(_partFlash){ for(const r of _partFlash) if(r.mat && r.mat.emissive) r.mat.emissive.setHex(r.hex); _partFlash=null; }
-  if(!root || !name) return;
-  const saved=[];
+function _clearPartHighlight(){ if(_partFlash){ for(const r of _partFlash) if(r.mat && r.mat.emissive) r.mat.emissive.setHex(r.hex); _partFlash=null; } }
+// build 803: HIGHLIGHT a named part (persistent) so it can follow HOVER — set on mouse-enter, clear on leave, so you can
+// preview which part a name is BEFORE clicking (clicking commits it to the wheel list).
+function _setPartHighlight(root, name){ _clearPartHighlight(); if(!root || !name) return; const saved=[];
   root.traverse(n=>{ if(n.name===name && n.traverse) n.traverse(m=>{ if(m.isMesh){ const mats=Array.isArray(m.material)?m.material:[m.material]; for(const mat of mats){ if(mat && mat.emissive){ saved.push({ mat, hex:mat.emissive.getHex() }); mat.emissive.setHex(0x2f7bff); } } } }); });
-  if(!saved.length) return; _partFlash=saved;
-  setTimeout(()=>{ if(_partFlash===saved){ for(const r of saved) if(r.mat && r.mat.emissive) r.mat.emissive.setHex(r.hex); _partFlash=null; } }, 1200);
-}
+  if(saved.length) _partFlash=saved; }
+function _flashModelPart(root, name){ _setPartHighlight(root, name); const saved=_partFlash; if(saved) setTimeout(()=>{ if(_partFlash===saved) _clearPartHighlight(); }, 1200); }   // timed flash (touch/click, no hover)
 const _wqSpin=new THREE.Quaternion(), _wqSteer=new THREE.Quaternion(), _wAxle=new THREE.Vector3(), _wUp=new THREE.Vector3(0,1,0), _wpA=new THREE.Vector3(), _wpB=new THREE.Vector3();
 function _updateWheels(o, cfg, speed, steerFrac, dt){
   if(!cfg || !cfg.wheels){ if(o.userData._wheels) o.userData._wheels=null; return; }
@@ -16211,7 +16210,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 802 · 2026-06-30';
+const BUILD_VERSION = 'build 803 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -23764,7 +23763,9 @@ function renderEditorFields(){
             // list the model's named parts as CLICKABLE chips — click adds to Wheels + glows the part in the scene; Shift-click adds to Front
             const _names=[]; sel.traverse(n=>{ if(n!==sel && n.name && _names.indexOf(n.name)<0) _names.push(n.name); });
             if(_names.length){ const pl=document.createElement('div'); pl.className='hint'; pl.style.cssText='margin:1px 0 4px;font-size:10px;opacity:.9;max-height:74px;overflow:auto;'; const lead=document.createElement('span'); lead.innerHTML='<b>Detected parts</b> <span style="opacity:.7">(click = add to Wheels + highlight · Shift-click = Front):</span> '; pl.appendChild(lead);
-              _names.slice(0,80).forEach((nm,i)=>{ const chip=document.createElement('span'); chip.textContent=nm; chip.title='Click to add to Wheels + highlight in the scene · Shift-click to add to Front'; chip.style.cssText='display:inline-block;margin:1px 3px 1px 0;padding:1px 6px;border-radius:4px;background:rgba(56,245,181,0.12);border:1px solid rgba(56,245,181,0.3);color:#9fe6cf;cursor:pointer;';
+              _names.slice(0,80).forEach((nm,i)=>{ const chip=document.createElement('span'); chip.textContent=nm; chip.title='Hover to highlight the part · click to add to Wheels · Shift-click to add to Front'; chip.style.cssText='display:inline-block;margin:1px 3px 1px 0;padding:1px 6px;border-radius:4px;background:rgba(56,245,181,0.12);border:1px solid rgba(56,245,181,0.3);color:#9fe6cf;cursor:pointer;';
+                chip.onmouseenter=()=>{ chip.style.background='rgba(56,245,181,0.32)'; if(typeof _setPartHighlight==='function') _setPartHighlight(sel, nm); };   // build 803: hover previews the part (no commit)
+                chip.onmouseleave=()=>{ chip.style.background='rgba(56,245,181,0.12)'; if(typeof _clearPartHighlight==='function') _clearPartHighlight(); };
                 chip.onclick=(ev)=>{ if(typeof _flashModelPart==='function') _flashModelPart(sel, nm); _addToken(ev.shiftKey?'wheelsFront':'wheels', nm); if(typeof _levelDirty!=='undefined') _levelDirty=true; }; pl.appendChild(chip); });
               vBody.appendChild(pl); }
             else { const pl=document.createElement('div'); pl.className='hint'; pl.style.cssText='margin:1px 0 4px;font-size:10px;color:#ffd27f;'; pl.textContent='This model exposes no named sub-parts — procedural wheels need a model whose wheels are separate, named meshes.'; vBody.appendChild(pl); }

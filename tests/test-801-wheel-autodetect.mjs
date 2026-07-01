@@ -32,14 +32,20 @@ assert(/const key=spreadZ>=spreadX\?'cz':'cx';/.test(ad), 'otherwise it splits a
   eq(front,'c,d','the two wheels at the -Z extreme are the front pair');
 }
 
-// --- part highlight: flash a named part's emissive, then restore ---
+// --- part highlight: a persistent set/clear (build 803, so it can follow hover) + a timed flash for click/touch ---
+const sh = extractFunction('_setPartHighlight');
+assert(/mat\.emissive\.setHex\(0x2f7bff\)/.test(sh) && /saved\.push\(\{ mat, hex:mat\.emissive\.getHex\(\) \}\)/.test(sh), 'highlight stores + overrides the part’s emissive');
+const ch = extractFunction('_clearPartHighlight');
+assert(/for\(const r of _partFlash\) if\(r\.mat && r\.mat\.emissive\) r\.mat\.emissive\.setHex\(r\.hex\); _partFlash=null;/.test(ch), 'clearing restores the saved emissive');
 const fp = extractFunction('_flashModelPart');
-assert(/mat\.emissive\.setHex\(0x2f7bff\)/.test(fp) && /saved\.push\(\{ mat, hex:mat\.emissive\.getHex\(\) \}\)/.test(fp), 'flashing stores + overrides the part’s emissive');
-assert(/setTimeout\(\(\)=>\{ if\(_partFlash===saved\)\{[\s\S]*?mat\.emissive\.setHex\(r\.hex\)/.test(fp), 'the emissive is restored after the flash');
+assert(/_setPartHighlight\(root, name\); const saved=_partFlash; if\(saved\) setTimeout\(\(\)=>\{ if\(_partFlash===saved\) _clearPartHighlight\(\); \}, 1200\);/.test(fp), 'the timed flash sets then clears the highlight');
 
 // --- editor wiring: the Auto-detect button + clickable chips ---
 assert(/ad\.onclick=\(\)=>\{ const r=\(typeof _autoDetectWheels==='function'\)\?_autoDetectWheels\(sel\):null;/.test(src), 'the Auto-detect button runs the detector on the selected model');
 assert(/V\.wheels=r\.wheels; V\.wheelsFront=r\.wheelsFront; V\.wheelAxis=r\.wheelAxis;/.test(src), 'detection fills the wheel + front + axle fields');
 assert(/chip\.onclick=\(ev\)=>\{ if\(typeof _flashModelPart==='function'\) _flashModelPart\(sel, nm\); _addToken\(ev\.shiftKey\?'wheelsFront':'wheels', nm\);/.test(src), 'a part chip highlights the part and adds it to Wheels (Shift = Front)');
+// build 803: hovering a chip previews the part (highlight on enter, clear on leave) WITHOUT committing it
+assert(/chip\.onmouseenter=\(\)=>\{[\s\S]*?_setPartHighlight\(sel, nm\);/.test(src), 'hovering a chip highlights the part (no commit)');
+assert(/chip\.onmouseleave=\(\)=>\{[\s\S]*?_clearPartHighlight\(\);/.test(src), 'leaving the chip clears the highlight');
 
-done('build 801: auto-detect wheels + click-to-identify model parts');
+done('build 801/803: auto-detect wheels + hover-to-identify model parts');
