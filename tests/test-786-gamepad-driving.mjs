@@ -5,9 +5,9 @@ import { gameSource, extractFunction, assert, done } from './harness.mjs';
 const src = gameSource();
 const du = extractFunction('driveUpdate');
 
-// --- held triggers: RT boosts, LT handbrakes (firing/ADS are gated off while driving, so reusing them is safe) ---
-assert(/boostKey=\(keys\['ShiftLeft'\]\|\|keys\['ShiftRight'\]\|\|\(typeof padFiring!=='undefined'&&padFiring\)\|\|\(typeof touchFiring!=='undefined'&&touchFiring\)\)/.test(du), 'RT (padFiring) + mobile Fire engage boost');
-assert(/const handbrake=\(keys\['Space'\]\|\|keys\['KeyB'\]\|\|\(typeof padAds!=='undefined'&&padAds\)\|\|\(typeof touchAds!=='undefined'&&touchAds\)\);/.test(du), 'LT (padAds) + mobile Aim engage the handbrake');
+// --- held triggers: RT boosts, LT handbrakes on the gamepad; dedicated Boost/Brake buttons on mobile ---
+assert(/boostKey=\(keys\['ShiftLeft'\]\|\|keys\['ShiftRight'\]\|\|\(typeof padFiring!=='undefined'&&padFiring\)\|\|\(typeof touchBoost!=='undefined'&&touchBoost\)\)/.test(du), 'RT (padFiring) + mobile Boost button engage boost');
+assert(/const handbrake=\(keys\['Space'\]\|\|keys\['KeyB'\]\|\|\(typeof padAds!=='undefined'&&padAds\)\|\|\(typeof touchHandbrake!=='undefined'&&touchHandbrake\)\);/.test(du), 'LT (padAds) + mobile Brake button engage the handbrake');
 
 // --- mobile: the virtual joystick drives the car (throttle + steer), mirroring the gamepad left stick ---
 assert(/else if\(typeof touchMoveZ!=='undefined' && touchMoveZ\) throttle \+= -touchMoveZ;/.test(du), 'mobile joystick Y = throttle/reverse');

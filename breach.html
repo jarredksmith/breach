@@ -354,6 +354,16 @@
   body.touch #tWeapon { left: calc(150px + env(safe-area-inset-left));  bottom: calc(90px + env(safe-area-inset-bottom)); width:54px; height:54px; }
   body.touch #tUse    { left: calc(150px + env(safe-area-inset-left));  bottom: calc(26px + env(safe-area-inset-bottom)); width:54px; height:54px; }
   body.touch #tNade   { left: calc(208px + env(safe-area-inset-left));  right:auto; bottom: calc(26px + env(safe-area-inset-bottom)); width:54px; height:54px; }
+  /* build 788: mobile driving cluster — hidden by default, swapped in for the combat buttons while in a car */
+  .dBtn { display:none; }
+  body.touch.driving #tFire, body.touch.driving #tAim, body.touch.driving #tJump, body.touch.driving #tReload, body.touch.driving #tNade, body.touch.driving #tWeapon, body.touch.driving #tUse { display:none !important; }
+  body.touch.driving .dBtn { display:flex; }
+  body.touch #tBoost  { right: calc(22px + env(safe-area-inset-right));  bottom: calc(22px + env(safe-area-inset-bottom));  width:88px; height:88px; font-size:13px; }
+  body.touch #tBrake  { right: calc(118px + env(safe-area-inset-right)); bottom: calc(40px + env(safe-area-inset-bottom));  width:64px; height:64px; font-size:11px; }
+  body.touch #tLights { right: calc(28px + env(safe-area-inset-right));  bottom: calc(120px + env(safe-area-inset-bottom)); width:56px; height:56px; font-size:10px; }
+  body.touch #tView   { right: calc(96px + env(safe-area-inset-right));  bottom: calc(126px + env(safe-area-inset-bottom)); width:52px; height:52px; font-size:10px; }
+  body.touch #tFollow { right: calc(30px + env(safe-area-inset-right));  bottom: calc(190px + env(safe-area-inset-bottom)); width:52px; height:52px; font-size:10px; }
+  body.touch #tExit   { left:  calc(150px + env(safe-area-inset-left));  bottom: calc(26px + env(safe-area-inset-bottom));  width:64px; height:64px; font-size:12px; }
   @media (max-height: 430px){
     body.touch #tStick { width:104px; height:104px; }
     body.touch .tBtn { transform: scale(0.88); }
@@ -653,6 +663,13 @@
     <button class="tBtn" id="tNade"></button>
     <button class="tBtn" id="tWeapon"></button>
     <button class="tBtn" id="tUse">USE</button>
+    <!-- build 788: driving cluster — shown only while in a car (body.driving), replacing the combat buttons -->
+    <button class="tBtn dBtn" id="tBoost">BOOST</button>
+    <button class="tBtn dBtn" id="tBrake">BRAKE</button>
+    <button class="tBtn dBtn" id="tLights">LIGHTS</button>
+    <button class="tBtn dBtn" id="tView">VIEW</button>
+    <button class="tBtn dBtn" id="tFollow">CAM</button>
+    <button class="tBtn dBtn" id="tExit">EXIT</button>
   </div>
 
   <div id="stats" class="panel">
@@ -8957,6 +8974,7 @@ applyControlMode();
 if(isTouch && document.body) document.body.classList.add('touch');
 addEventListener('touchstart', ()=>{ if(_ctrlPref==='desktop') return; isTouch = true; if(document.body) document.body.classList.add('touch'); }, { once:true, passive:true });          // or reveal as soon as a real touch happens
 let touchMoveX=0, touchMoveZ=0, touchSprint=false, touchFiring=false, touchAds=false, touchJump=false, touchLookDX=0, touchLookDY=0;
+let touchBoost=false, touchHandbrake=false;   // build 788: dedicated mobile driving buttons (held) for boost + handbrake
 let _jumpHeldPrev=false; const JUMP_CD=0.5;   // jump must be a fresh press, and at least JUMP_CD seconds apart — stops hold-to-bunny-hop
 const TOUCH_LOOK_SENS = 0.0042, TOUCH_ADS_SENS = 0.0022;
 // Pointer Lock isn't supported on iOS Safari (the methods are undefined). Route every call through these
@@ -9101,6 +9119,7 @@ function clearMovementInput(){
   _crouchToggled=false;
   for(const k in keys) keys[k]=false;
   touchMoveX=0; touchMoveZ=0; touchSprint=false; touchFiring=false; touchAds=false; touchJump=false; touchLookDX=0; touchLookDY=0;
+  touchBoost=false; touchHandbrake=false;
   sliding=false; firing=false;
   if(player && player.vel){ player.vel.x=0; player.vel.z=0; }
   const _thumb=document.getElementById('tThumb'); if(_thumb) _thumb.style.transform='translate(0,0)';   // reset the stick visual too
@@ -14881,6 +14900,7 @@ function enterCar(o){
   if(SFX.swap) SFX.swap();
   _engStart(); _driveHudEl().style.display='block';   // build 715: engine sound + speed HUD
   { const _cx=document.getElementById('crosshair'); if(_cx) _cx.style.display='none'; }   // build 738: no crosshair while driving
+  if(document.body) document.body.classList.add('driving');   // build 788: swap the mobile combat buttons for the driving cluster
 }
 function exitCar(){
   if(!drivingCar) return;
@@ -14901,6 +14921,8 @@ function exitCar(){
   if(typeof _clearFlames==='function') _clearFlames();   // build 768: drop any lingering boost flames
   o.userData._flameT=0;
   if(typeof _headlightsOff==='function') _headlightsOff();   // build 781: headlights off when you leave the car
+  touchBoost=false; touchHandbrake=false;   // build 788: drop any held mobile driving inputs
+  if(document.body) document.body.classList.remove('driving');   // build 788: restore the mobile combat buttons
   if(SFX.swap) SFX.swap();
 }
 // build 770: a driverless car you bailed from at speed keeps rolling. Trimmed driveUpdate: momentum + decel + ground +
@@ -15220,7 +15242,7 @@ function driveUpdate(dt){
   else if(typeof touchMoveZ!=='undefined' && touchMoveZ) throttle += -touchMoveZ;   // build 786: mobile joystick drives the car too
   throttle=Math.max(-1,Math.min(1,throttle));
   // build 719: BOOST — hold Shift to surge for boostDur seconds, then a boostCd cooldown before it's ready again.
-  const bMult=+cfg.boost||1, boostKey=(keys['ShiftLeft']||keys['ShiftRight']||(typeof padFiring!=='undefined'&&padFiring)||(typeof touchFiring!=='undefined'&&touchFiring));   // build 786: RT / the mobile Fire button also boost (firing is gated off while driving)
+  const bMult=+cfg.boost||1, boostKey=(keys['ShiftLeft']||keys['ShiftRight']||(typeof padFiring!=='undefined'&&padFiring)||(typeof touchBoost!=='undefined'&&touchBoost));   // build 786/788: RT / the mobile Boost button engage boost (firing is gated off while driving)
   if(o.userData.boostCdT>0) o.userData.boostCdT=Math.max(0, o.userData.boostCdT-dt);
   if(o.userData.boostT>0){ o.userData.boostT-=dt; if(o.userData.boostT<=0){ o.userData.boostT=0; o.userData.boostCdT=+cfg.boostCd||0; } }
   else if(boostKey && bMult>1.01 && (o.userData.boostCdT||0)<=0 && throttle>0){ o.userData.boostT=+cfg.boostDur||3; if(typeof playSample==='function') playSample(curSounds().carBoost); }   // engage (forward only) + build 749 boost SFX
@@ -15260,7 +15282,7 @@ function driveUpdate(dt){
   // build 725: GRIP / DRIFT — the travel direction (carVelYaw) chases the heading at a grip rate. Normally sticky, so the
   // car goes where it points; a handbrake (Space / B) or a hard turn at speed lets travel lag the heading => it slides.
   if(o.userData.carVelYaw==null) o.userData.carVelYaw=carYaw;
-  const handbrake=(keys['Space']||keys['KeyB']||(typeof padAds!=='undefined'&&padAds)||(typeof touchAds!=='undefined'&&touchAds));   // build 786: LT / the mobile Aim button also handbrake (ADS is gated off while driving)
+  const handbrake=(keys['Space']||keys['KeyB']||(typeof padAds!=='undefined'&&padAds)||(typeof touchHandbrake!=='undefined'&&touchHandbrake));   // build 786/788: LT / the mobile Brake button engage the handbrake (ADS is gated off while driving)
   if(handbrake && !o.userData._hbWas && o.userData._carGrounded!==false && Math.abs(o.userData.carSpeed||0)>3 && typeof playSample==='function') playSample(curSounds().carBrake);   // build 749: brake SFX on the rising edge of the handbrake (build 754: only when grounded — airborne tyres can't screech)
   o.userData._hbWas=handbrake;
   const gripBase=Math.max(0.5,+cfg.grip||6), grip=handbrake?gripBase*0.16:gripBase;
@@ -16029,7 +16051,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 787 · 2026-06-30';
+const BUILD_VERSION = 'build 788 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -16205,6 +16227,13 @@ addEventListener('contextmenu', e=>{ if(gameOn) e.preventDefault(); });
   tap('tNade', ()=>{ if(typeof throwGrenade==='function') throwGrenade(); });
   tap('tUse', ()=>{ if(typeof interact==='function') interact(); });
   tap('tWeapon', ()=>{ if(typeof cycleWeapon==='function') cycleWeapon(1); });
+  // build 788: mobile driving cluster — held gas/boost/brake + tap toggles, shown only while in a car
+  hold('tBoost', ()=>touchBoost=true, ()=>touchBoost=false);
+  hold('tBrake', ()=>touchHandbrake=true, ()=>touchHandbrake=false);
+  tap('tLights', ()=>{ if(typeof _carCycleHeadlights==='function') _carCycleHeadlights(); });
+  tap('tView',   ()=>{ if(typeof _carCycleView==='function') _carCycleView(); });
+  tap('tFollow', ()=>{ if(typeof _carCycleFollow==='function') _carCycleFollow(); });
+  tap('tExit',   ()=>{ if(typeof exitCar==='function') exitCar(); });
   // Aim button: tap toggles aim-down-sights, and (like fire) you can drag the same thumb to keep aiming.
   (function(){
     const aim=document.getElementById('tAim'); if(!aim) return;
