@@ -15148,7 +15148,7 @@ function _placeBrakeLights(o, cfg, cy, lit){
   _ensureBrakeLights();
   const hx=-Math.sin(cy), hz=-Math.cos(cy), rx=-hz, rz=hx, f=_carFoot(o);
   const back=-(f.hd*0.95) - (+cfg.brakeBack||0);   // sit at the TAIL (negative forward), trimmable
-  const sep=Math.max(0.02, f.hw*0.55 + (+cfg.brakeSep||0)), y=o.position.y + Math.max(0.12, f.hh*0.5 + (+cfg.brakeY||0));
+  const sep=Math.max(0.02, f.hw*0.55 + (+cfg.brakeSep||0)), y=o.position.y + (f.hh*0.5 + (+cfg.brakeY||0));   // build 802: no height floor — brakeY can drop the lights all the way to (and below) the model base
   const bcx=o.position.x + hx*(f.oz+back) + rx*f.ox, bcz=o.position.z + hz*(f.oz+back) + rz*f.ox;
   const col=(cfg.brakeColor!=null?cfg.brakeColor:0xff2020), sz=Math.max(0.12, (cfg.brakeSize!=null?+cfg.brakeSize:0.5));
   for(const [S,s] of [[_brakeL,-1],[_brakeR,1]]){
@@ -16211,7 +16211,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 801 · 2026-06-30';
+const BUILD_VERSION = 'build 802 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

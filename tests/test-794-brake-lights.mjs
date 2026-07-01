@@ -13,6 +13,8 @@ assert(/function _brakeLightsOff\(\)\{ if\(_brakeL\) _brakeL\.material\.opacity=
 // --- placement sits at the TAIL, uses the oriented footprint, and lights per the passed state ---
 const pb = extractFunction('_placeBrakeLights');
 assert(/const back=-\(f\.hd\*0\.95\) - \(\+cfg\.brakeBack\|\|0\)/.test(pb), 'the lights sit at the tail (negative forward), trimmable by brakeBack');
+// build 802: the vertical offset has NO floor, so brakeY can drop the lights all the way down (and below) the model base
+assert(/y=o\.position\.y \+ \(f\.hh\*0\.5 \+ \(\+cfg\.brakeY\|\|0\)\)/.test(pb) && !/Math\.max\(0\.12, f\.hh\*0\.5/.test(pb), 'the brake height has no lower clamp (build 802)');
 assert(/S\.material\.opacity=lit;/.test(pb), 'the lit amount drives the sprite opacity');
 
 // --- update only lights the car you are driving ---
