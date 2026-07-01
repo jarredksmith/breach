@@ -13084,14 +13084,15 @@ function tpCameraPushback(){
   const side = tpSide + (tpAimSide - tpSide)*_b;
   const height = tpHeight + (tpAimHeight - tpHeight)*_b;
   let dist = tpDist + (tpAimDist - tpDist)*_b;
-  if(!_tpCaster) _tpCaster=new THREE.Raycaster();
-  _tpCaster.set(_tpEye.set(px,py,pz), _tpBack.set(-fx,-fy,-fz)); _tpCaster.far=dist;
-  const hits=_tpCaster.intersectObjects(colliders, false);
-  if(hits.length) dist=Math.max(TP_MIN, hits[0].distance-0.35);   // don't clip through a wall behind us
   const rx = cy, rz = -sy;   // yaw-only view-right (level)
   // camera sits back by dist, shifted sideways by side and vertically by height, looking PARALLEL to forward
   // so a nonzero side moves the character off-center (true OTS) while the crosshair stays accurate.
-  const camx = px - fx*dist + rx*side, camy = py - fy*dist + height, camz = pz - fz*dist + rz*side;
+  let camx = px - fx*dist + rx*side, camy = py - fy*dist + height, camz = pz - fz*dist + rz*side;
+  // build 799: collide the FULL offset camera position and pull the camera in along the pivot->camera line. The old
+  // straight-back ray was NON-recursive (missed props whose geometry sits in child meshes) and ignored the over-the-shoulder
+  // side/height offset (so the camera clipped through walls/props BESIDE the character). _cameraCollide casts recursively to
+  // the real camera point, so nested prop/model meshes count and an OTS camera can't punch through geometry.
+  if(typeof _cameraCollide==='function'){ const _cc=_cameraCollide(px, py, pz, camx, camy, camz, TP_MIN, (typeof _ownAvatar!=='undefined'?_ownAvatar:null)); if(_cc){ camx=_cc.x; camy=_cc.y; camz=_cc.z; } }
   camera.position.set(camx, camy, camz);
   if(side || height){ _tpLookAt.set(camx + fx, camy + fy, camz + fz); camera.lookAt(_tpLookAt); }
 }
@@ -16164,7 +16165,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 798 · 2026-06-30';
+const BUILD_VERSION = 'build 799 · 2026-06-30';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;

@@ -21,8 +21,8 @@ assert(blend(0, 0.9, 0) === 0, 'b=0 -> hip side');
 assert(Math.abs(blend(0, 0.9, 1) - 0.9) < 1e-9, 'b=1 -> aim side');
 assert(Math.abs(blend(4.2, 2.6, 0.5) - 3.4) < 1e-9, 'b=0.5 -> halfway distance');
 
-// the wall-clip raycast uses the BLENDED distance (so aim pull-in still respects walls)
-assert(/_tpCaster\.far=dist;/.test(tp), 'wall-clip ray uses the blended distance');
+// the wall-clip test now collides the FULL offset camera position (build 799) at the blended distance
+assert(/let camx = px - fx\*dist \+ rx\*side/.test(tp) && /_cameraCollide\(px, py, pz, camx, camy, camz, TP_MIN/.test(tp), 'the blended-distance camera position is collided against world geometry');
 
 // Player tab exposes a second slider group for the aim framing
 assert(/aimHdr\.innerHTML='<b>\\u2026when aiming \(right-click\)<\/b>'/.test(src), 'a "when aiming" slider group is shown');

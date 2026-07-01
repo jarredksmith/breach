@@ -4,8 +4,8 @@ const src = gameSource();
 assert(/let tpMode = /.test(src), 'tpMode flag must exist');
 assert(/localStorage\.getItem\('breach_tp'\)/.test(src), 'tpMode must persist');
 const tcp = extractFunction('tpCameraPushback');
-assert(/intersectObjects\(colliders/.test(tcp), 'chase cam must pull in past walls');
-assert(/const camx = px - fx\*dist \+ rx\*side, camy = py - fy\*dist \+ height, camz = pz - fz\*dist \+ rz\*side;/.test(tcp), 'chase cam pulls back with blended side/distance/height framing (build 373)');
+assert(/_cameraCollide\(px, py, pz, camx, camy, camz, TP_MIN/.test(tcp), 'chase cam must pull in past walls (build 799: full-offset recursive collision)');
+assert(/let camx = px - fx\*dist \+ rx\*side, camy = py - fy\*dist \+ height, camz = pz - fz\*dist \+ rz\*side;/.test(tcp), 'chase cam pulls back with blended side/distance/height framing (build 373)');
 const uoa = extractFunction('updateOwnAvatar');
 assert(/_ownAvatar\.visible=false/.test(uoa) && /a\.rotation\.y = player\.yaw/.test(uoa), 'own avatar shown/hidden + faced');
 // own avatar must be flagged noHit and its proxies must not raycast
