@@ -139,7 +139,8 @@ assert(/const gC=_carGroundY\(o\.position\.x, o\.position\.z, o, _ceil\);/.test(
 assert(/const _ceil=o\.position\.y \+ _h\.hh\*2 \+ 0\.6;/.test(src), 'build 739: the ground query is capped at the car\'s headroom so it ignores roofs/overhangs (no climbing onto buildings)');
 assert(/const _cap = \(ceilY!=null\) \? ceilY : Infinity;/.test(src) && /if\(h\.point\.y > _cap\) continue;/.test(src), 'surfaceTopAt ignores any surface above the ceiling (the roof over a doorway)');
 // build 717: ramp-aware vertical — 4-corner ground sample, surface tilt, gravity + launch
-assert(/const gF=_carGroundY\(o\.position\.x\+hx\*_hd[\s\S]*?_ceil\);[\s\S]*?const gB=_carGroundY\(o\.position\.x-hx\*_hd/.test(src), 'samples front + back ground (heading frame) to tilt to the ramp');
+assert(/gF:_carGroundY\(o\.position\.x\+hx\*_hd[\s\S]*?_ceil\),[\s\S]*?gB:_carGroundY\(o\.position\.x-hx\*_hd/.test(src), 'samples front + back ground (heading frame) to tilt to the ramp (build 809: via the ~25Hz corner cache)');
+assert(/const _ccStale=!_cc \|\| \(_ccNow-_cc\.t>40\)/.test(src) && /const gC=_carGroundY\(o\.position\.x, o\.position\.z, o, _ceil\);/.test(src), 'the centre sample stays live (rest height); only the tilt corners are cached');
 assert(/_vy -= GRAV\*0\.85\*dt;/.test(src), 'the car has gravity (so it can leave a ramp)');
 assert(/const _launch=\(_climb>0\.8 && _climb<22\)\?Math\.min\(_climb\*1\.15,15\)\*_lm:0;/.test(src), 'build 790/791: a ramp banks launch velocity (cap 15) scaled by the Launch multiplier; a wall-ram spike does not');
 assert(/_carEuler\.set\(o\.userData\.carPitch \+ o\.userData\.leanPitch, carYaw, o\.userData\.carRoll \+ o\.userData\.leanRoll\);/.test(src) && /o\.quaternion\.copy\(_carQuat\)\.multiply\(_carModelQ\);/.test(src), 'the body pitches/rolls to the surface + suspension lean (build 729)');

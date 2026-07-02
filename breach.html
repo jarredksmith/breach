@@ -12086,6 +12086,7 @@ let _repathBudget = 0;   // A* searches allowed per frame (reset each updateBots
 // one more frame; the jittered per-entity intervals stagger their due-times after the first second, so this
 // round-robins fairly. Scaling is graceful: more actors just means slightly staler perception, not lower FPS.
 let _losBudget = 0;      // LOS (segmentBlocked / _botLOS) raycasts allowed per frame across all AI
+let _airGroundBudget = 8;   // build 809: ground raycasts for cell-moved/airborne actors (they bypassed _groundBudget entirely)
 let _groundBudget = 0;   // ground (groundHeightAt) raycasts allowed per frame; airborne actors bypass it (landing must stay frame-accurate)
 let _pathBudget = 0;     // build 553: "is the straight walking path blocked?" raycasts allowed per frame (enemy beeline-vs-pathfind decision)
 function _setCountdown(html){
@@ -15452,11 +15453,19 @@ function driveUpdate(dt){
   // build 739: cap the ground query at the car's headroom, so a roof / floor-above (a doorway lintel, a building roof)
   // is NOT read as ground — the car reads the FLOOR below it and drives through openings instead of climbing the building.
   const _ceil=o.position.y + _h.hh*2 + 0.6;
-  const gC=_carGroundY(o.position.x, o.position.z, o, _ceil);
-  const gF=_carGroundY(o.position.x+hx*_hd, o.position.z+hz*_hd, o, _ceil);
-  const gB=_carGroundY(o.position.x-hx*_hd, o.position.z-hz*_hd, o, _ceil);
-  const gR=_carGroundY(o.position.x+_rx*_hw, o.position.z+_rz*_hw, o, _ceil);
-  const gL=_carGroundY(o.position.x-_rx*_hw, o.position.z-_rz*_hw, o, _ceil);
+  const gC=_carGroundY(o.position.x, o.position.z, o, _ceil);   // centre stays LIVE — it sets the rest height (landing accuracy)
+  // build 809: the 4 OUTER corner samples only drive the body TILT, which is eased at dt*9 anyway — refresh them at ~25Hz
+  // (or when the car has moved a bit) instead of every frame. Cuts the car's ground raycasts by ~4/5 at high framerates.
+  let _cc=o.userData._cornerCache; const _ccNow=performance.now();
+  const _ccStale=!_cc || (_ccNow-_cc.t>40) || Math.abs(o.position.x-_cc.x)>0.6 || Math.abs(o.position.z-_cc.z)>0.6 || Math.abs((_cc.yaw||0)-carYaw)>0.12;
+  if(_ccStale){
+    _cc = o.userData._cornerCache = { t:_ccNow, x:o.position.x, z:o.position.z, yaw:carYaw,
+      gF:_carGroundY(o.position.x+hx*_hd, o.position.z+hz*_hd, o, _ceil),
+      gB:_carGroundY(o.position.x-hx*_hd, o.position.z-hz*_hd, o, _ceil),
+      gR:_carGroundY(o.position.x+_rx*_hw, o.position.z+_rz*_hw, o, _ceil),
+      gL:_carGroundY(o.position.x-_rx*_hw, o.position.z-_rz*_hw, o, _ceil) };
+  }
+  const gF=_cc.gF, gB=_cc.gB, gR=_cc.gR, gL=_cc.gL;
   // build 722: rest the model's WHEELS on the ground, not its origin. carBaseOff (origin->lowest point, measured on enter)
   // cancels models whose origin sits high (float) or low (sink); rideHeight is an optional author trim.
   const _base=(o.userData.carBaseOff||0)+(+cfg.rideHeight||0); let _rest=gC+_base;
@@ -16215,7 +16224,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 808 · 2026-07-02';
+const BUILD_VERSION = 'build 809 · 2026-07-02';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19817,6 +19826,7 @@ function loop(){
     if(!NAV.built){ if(!NAV.building && typeof navBuildBegin==='function') navBuildBegin(); if(typeof navBuildStep==='function') navBuildStep(5); }
     _repathBudget = 3;   // cap A* searches per tick so a frame never stalls on many enemy repaths at once
     _losBudget = 5; _groundBudget = 5; _pathBudget = 5;   // build 547/553: per-frame LOS + ground + direct-path raycast caps. A wave spawns many enemies whose caches all come due on the same frame; these stop that frame from firing dozens of raycasts at once (the wave-framerate spike). Over-budget enemies reuse the cached value one more frame; the jittered intervals stagger them after ~1s.
+    _airGroundBudget = 8;   // build 809: cell-moved / airborne refreshes were EXEMPT from _groundBudget — a blast launching a wave fired ~3 casts x every enemy on one frame. Now they draw from their own (larger) pool; over-budget movers reuse last frame's ground for one frame.
     // Phase 1 — behavior: hunt chases anywhere; patrol/hold use detection + leash and otherwise patrol
     // their area or guard their post. Movement aims at the state's target point; chasing stops just
     // outside melee so they crowd the player instead of bulldozing through.
@@ -19970,9 +19980,9 @@ function loop(){
       // build 546: groundHeightAt does a downward raycast. Refresh it ~10x/sec per enemy (or when it moves to
       // a new cell), caching between, instead of raycasting every frame for every enemy — another big slice of
       // the wave framerate. The launch arc (launchY) still rides on top live.
-      const _enGMoved = Math.abs(en.mesh.position.x-(en._grX||0))>0.8 || Math.abs(en.mesh.position.z-(en._grZ||0))>0.8;
+      const _enGMoved = (Math.abs(en.mesh.position.x-(en._grX||0))>0.8 || Math.abs(en.mesh.position.z-(en._grZ||0))>0.8) && (en._grT==null || (typeof _airGroundBudget!=='undefined' ? _airGroundBudget-->0 : true));   // build 809: movers draw from their own budget (a blast-launched wave was ~3 casts x N enemies on ONE frame); over budget = reuse last ground one frame
       if(en._grT==null || _enGMoved || (nowMs-en._grT>(en._grIv||100) && (typeof _groundBudget==='undefined' || _groundBudget>0))){
-        if(!_enGMoved && en._grT!=null && typeof _groundBudget!=='undefined') _groundBudget--;   // build 547: the periodic standing refresh draws from the per-frame budget; a cell-move or first-touch is mandatory (free). Stops a whole wave from re-grounding on one frame.
+        if(!_enGMoved && en._grT!=null && typeof _groundBudget!=='undefined') _groundBudget--;   // build 547: the periodic standing refresh draws from the per-frame budget; first-touch is mandatory (free). Stops a whole wave from re-grounding on one frame.
         en._grT=nowMs; en._grIv=90+Math.random()*30; en._grX=en.mesh.position.x; en._grZ=en.mesh.position.z;
         en._groundY = (typeof groundHeightAt==='function') ? groundHeightAt(en.mesh.position.x, en.mesh.position.z, en.mesh.position.y - 1.4) : terrainHeightAt(en.mesh.position.x, en.mesh.position.z);
       }
