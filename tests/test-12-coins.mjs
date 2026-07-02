@@ -12,7 +12,7 @@ function run(scenario) {
   const player = { pos: { x: 0, z: 0 }, credit(v){ credited += v; } };
   const allPlayers = () => [player];
   const updateCoins = evalDecl(
-    'const coins=__coins; const scene=__scene; const allPlayers=__allPlayers; ' + extractFunction('updateCoins'),
+    'const coins=__coins; const scene=__scene; const allPlayers=__allPlayers; const _freeCoinMesh=(m)=>__scene.remove(m); ' + extractFunction('updateCoins'),   // build 812: removal routes through the coin pool
     'updateCoins', { __coins: coins, __scene: scene, __allPlayers: allPlayers });
   updateCoins(scenario.dt ?? 0.016);
   return { coins, credited };

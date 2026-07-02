@@ -9,7 +9,7 @@ assert(/netDeath\(player\.pos\.x, player\.pos\.y, player\.pos\.z\)/.test(src), '
 assert(/netDeath\(b\.pos\.x,b\.pos\.y\|\|0,b\.pos\.z\)/.test(src), 'bot death FX uses the bot\'s real Y');
 // the FX still offsets the particles up from the feet position it is given
 const fx = extractFunction('playerDeathFx');
-assert(/p\.position\.set\(x, y\+0\.9, z\)/.test(fx), 'particles rise from the given feet height');
+assert(/_dfxPos\.set\(x, y\+0\.9, z\)/.test(fx), 'particles rise from the given feet height (build 812: via the pooled spark spawn)');
 
 // --- bot death animation + fade ---
 const bd = extractFunction('botDie');

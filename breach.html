@@ -10083,9 +10083,19 @@ function makeCoinMesh(){
   }
   const m = new THREE.Mesh(coinGeo, coinMat); m.rotation.x = Math.PI/2; return m;
 }
+// build 812: coin meshes are POOLED — a multi-kill payout was allocating a fresh mesh (or a whole cloned GLTF group) per
+// coin and dropping it on pickup. Reuse is keyed on the coin config so a changed custom model never resurrects stale meshes.
+const _coinPool = [];
+function _coinKey(){ return (coinCfg.url||'') + '|' + (coinCfg.scale||1); }
+function _takeCoinMesh(){
+  const k=_coinKey();
+  while(_coinPool.length){ const m=_coinPool.pop(); if(m.userData._coinKey===k){ m.visible=true; return m; } }   // stale-config meshes just drop out of the pool
+  const m=makeCoinMesh(); m.userData._coinKey=k; return m;
+}
+function _freeCoinMesh(m){ scene.remove(m); if(m.userData._coinKey===_coinKey() && _coinPool.length<40) _coinPool.push(m); }
 function spawnCoin(x, z, value){
   if(!coinCfg.on) return;                       // coins disabled -> no drops (and no credits from kills)
-  const mesh = makeCoinMesh();
+  const mesh = _takeCoinMesh();
   mesh.position.set(x, 0.9, z);
   scene.add(mesh);
   coins.push({ id: nextCoinId++, mesh, spin: Math.random()*Math.PI*2, life: 25, value });
@@ -10109,10 +10119,10 @@ function updateCoins(dt){
     if(c.life < 4) c.mesh.visible = Math.floor(c.life*6)%2===0;
     if(near && nd < 1.6){
       near.credit(c.value);
-      scene.remove(c.mesh); coins.splice(i,1);
+      _freeCoinMesh(c.mesh); coins.splice(i,1);   // build 812: recycle into the coin pool
       continue;
     }
-    if(c.life <= 0){ scene.remove(c.mesh); coins.splice(i,1); }
+    if(c.life <= 0){ _freeCoinMesh(c.mesh); coins.splice(i,1); }
   }
 }
 
@@ -16092,6 +16102,9 @@ const _sparkFlashGeo = new THREE.SphereGeometry(1, 8, 8);   // soft additive imp
 // of combat. The shared geometry was already reused; now the Mesh+Material are pooled per geometry and recycled,
 // so a busy firefight reuses a small working set instead of thrashing the allocator.
 const _sparkPool = [], _flashPool = [];   // free meshes keyed by their geometry (_sparkGeo / _sparkFlashGeo)
+const _deathBoxGeo = new THREE.BoxGeometry(1.4, 1.4, 1.4);   // build 812: shared unit box for 'gib'-style death chunks (scaled per particle)
+const _deathBoxPool = [];                                     // build 812: pooled gib meshes
+const _dfxPos = new THREE.Vector3();
 function _getSpark(pool, geo, col, glow, scale, pos){
   let m = pool.pop();
   if(!m) m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ transparent:true }));
@@ -16136,21 +16149,21 @@ function playerDeathFx(x, y, z){
     gib:     { n:18, cols:[0x9a0d0d,0x6b4a2a,0xb31313], size:0.22, spd:10, up:[0.5,1.4],  grav:2.6, life:1.0, geo:'box',    ring:{ col:0x6b0000, life:0.8, grow:3,   flat:true, splat:true } },
     vapor:   { n:22, cols:[0xc8c8d0,0x9aa0b0,0xe0e0ea], size:0.2,  spd:5,  up:[0.3,0.7],  grav:-0.3,life:1.1, geo:'sphere', ring:{ col:0x9aa0b0, life:1.0, grow:6,  flat:true } },
   }[style] || null;
+  // build 812: death particles ride the shared spark POOLS (shared geometry, recycled mesh+material) — every death was
+  // allocating 18-34 fresh geometries+materials and disposing them ~1s later, thrashing the allocator during wave clears.
   if(!P){   // unknown style -> classic fallback
-    for(let i=0;i<26;i++){ const p=new THREE.Mesh(new THREE.SphereGeometry(0.13,5,5), new THREE.MeshBasicMaterial({ color:(i%2)?0xff2d55:0xff8a3d, transparent:true })); p.position.set(x,y+0.9,z); const v=new THREE.Vector3((Math.random()-.5),(Math.random()*0.9+0.25),(Math.random()-.5)).multiplyScalar(11); scene.add(p); sparks.push({mesh:p,vel:v,life:0.6}); }
+    for(let i=0;i<26;i++){ const p=_getSpark(_sparkPool, _sparkGeo, (i%2)?0xff2d55:0xff8a3d, false, 0.13, _dfxPos.set(x,y+0.9,z)); const v=new THREE.Vector3((Math.random()-.5),(Math.random()*0.9+0.25),(Math.random()-.5)).multiplyScalar(11); sparks.push({mesh:p,vel:v,life:0.6,max:0.6,s0:0.13,shrink:true,pool:_sparkPool}); }
     return;
   }
+  const _box = P.geo==='box', _geo = _box ? _deathBoxGeo : _sparkGeo, _pool = _box ? _deathBoxPool : _sparkPool;
   for(let i=0;i<P.n;i++){
     const col = P.cols[i % P.cols.length];
-    const geo = P.geo==='box' ? new THREE.BoxGeometry(P.size*SC*1.4, P.size*SC*1.4, P.size*SC*1.4) : new THREE.SphereGeometry(P.size*SC,5,5);
-    const p = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:col, transparent:true }));
-    p.position.set(x, y+0.9, z);
+    const p = _getSpark(_pool, _geo, col, false, P.size*SC, _dfxPos.set(x, y+0.9, z));
     const up = P.up[0] + Math.random()*(P.up[1]-P.up[0]);
     const v = new THREE.Vector3((Math.random()-.5), up, (Math.random()-.5)).multiplyScalar(P.spd*SC);
-    if(P.geo==='box') p.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
-    scene.add(p);
+    if(_box) p.rotation.set(Math.random()*6,Math.random()*6,Math.random()*6);
     const life = P.life*(0.7+Math.random()*0.5);
-    sparks.push({ mesh:p, vel:v, life, max:life, grav:P.grav, shrink:(style==='vapor'?false:true), grow:(style==='vapor'?2.2:0), s0:P.size*SC });
+    sparks.push({ mesh:p, vel:v, life, max:life, grav:P.grav, shrink:(style==='vapor'?false:true), grow:(style==='vapor'?2.2:0), s0:P.size*SC, pool:_pool });
   }
   // ground burst ring (and a lingering splat decal for the gory styles)
   const R = P.ring;
@@ -16235,7 +16248,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 811 · 2026-07-02';
+const BUILD_VERSION = 'build 812 · 2026-07-02';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19778,7 +19791,7 @@ function loop(){
     const k=1-Math.max(0,r.life)/mx; const sc=1+k*gr;
     r.mesh.scale.set(sc,sc,sc);
     r.mesh.material.opacity = r.fade ? Math.max(0,r.life/mx)*0.55 : Math.max(0,r.life/mx)*0.9;   // splats are dimmer + linger
-    if(r.life<=0){ scene.remove(r.mesh); r.mesh.geometry.dispose(); deathRings.splice(i,1); }
+    if(r.life<=0){ scene.remove(r.mesh); r.mesh.geometry.dispose(); if(r.mesh.material&&r.mesh.material.dispose) r.mesh.material.dispose(); deathRings.splice(i,1); }   // build 812: material too (was geometry-only)
   }
 
   const isClient = NET.mode==='client';   // clients don't simulate the shared world; the host owns it

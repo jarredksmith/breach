@@ -13,7 +13,7 @@ assert(/const m = new THREE\.Mesh\(coinGeo, coinMat\); m\.rotation\.x = Math\.PI
 
 const sc = extractFunction('spawnCoin');
 assert(/if\(!coinCfg\.on\) return;/.test(sc), 'OFF => no coins drop');
-assert(/const mesh = makeCoinMesh\(\);/.test(sc), 'spawn uses the shared builder');
+assert(/const mesh = _takeCoinMesh\(\);/.test(sc) && /const m=makeCoinMesh\(\); m\.userData\._coinKey=k; return m;/.test(src), 'spawn draws from the coin pool, which builds via the shared builder (build 812)');
 
 const up = extractFunction('upsertCoinMesh');
 assert(/m=makeCoinMesh\(\); scene\.add\(m\)/.test(up), 'co-op coin rendering uses the shared builder too');
