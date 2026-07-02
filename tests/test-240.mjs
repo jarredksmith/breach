@@ -6,7 +6,9 @@ const src = gameSource();
 // --- 336: scroll preservation ---
 const ref = extractFunction('renderEditorFields');
 const sI = ref.indexOf('const _edScroll = editorEl.scrollTop;');
-assert(sI > 0 && sI < 400, 'scroll captured at the very top, before any rebuild');
+assert(sI > 0 && sI < 900, 'scroll captured up-front, before any rebuild (build 818: after the coalescing gate)');
+// build 818: same-frame rebuild bursts collapse into one deferred rebuild
+assert(/if\(_refQueued\) return;/.test(ref) && /if\(_rnow - _refLast < 8\)\{ _refQueued = true; requestAnimationFrame\(/.test(ref), 'burst rebuilds coalesce to one rAF rebuild');
 assert(/queueMicrotask\(\(\)=>\{ try\{ if\(editorEl\) editorEl\.scrollTop = _edScroll; \}catch\(e\)\{\} try\{ renderLevelIssues\(\); \}catch\(e\)\{\} \}\);/.test(ref), 'restored after the pass regardless of return path (build 340: issues list piggybacks the same microtask)');
 
 // --- 337: edFold primitive ---

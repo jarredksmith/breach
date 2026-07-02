@@ -340,6 +340,10 @@
   body.touch #enemyCount { font-size:9px; margin-top:1px; }
   /* tidy mobile readouts: tight rounded panels (no angled clip), smaller numbers, no keyboard-only hints */
   body.touch .panel { padding:3px 8px; clip-path:none; border-radius:8px; background:rgba(8,18,22,.7); }
+  /* build 818: comfortable touch targets in the editor — many icon buttons were ~20px (padding:1px 7px), painful on a
+     tablet. On touch devices every editor control gets a minimum hit area; desktop keeps the dense layout. */
+  body.touch #editor button { min-height:38px; min-width:38px; }
+  body.touch #editor select, body.touch #editor input[type="text"], body.touch #editor input[type="number"], body.touch #editor input[type="color"] { min-height:34px; }
   body.touch #stats .big, body.touch #ammoPanel .big { font-size:15px; }
   body.touch #stats { min-width:84px; }
   body.touch #ammoPanel { min-width:84px; }
@@ -16319,7 +16323,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 817 · 2026-07-02';
+const BUILD_VERSION = 'build 818 · 2026-07-02';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -22566,8 +22570,17 @@ function renderInvItems(host){
     host.appendChild(form);
   }
 }
+// build 818: COALESCE same-frame rebuilds. The panel is rebuilt wholesale from ~177 call sites; a single interaction can
+// fire it several times back-to-back (remove -> re-render -> handler re-render). The first call in a frame runs
+// synchronously (callers may read the fresh DOM); any further call within ~8ms collapses into ONE deferred rebuild on the
+// next animation frame. Same output, a fraction of the DOM work on burst interactions.
+let _refLast = 0, _refQueued = false;
 function renderEditorFields(){
   if(!editorEl) return;
+  if(_refQueued) return;
+  { const _rnow = performance.now();
+    if(_rnow - _refLast < 8){ _refQueued = true; requestAnimationFrame(()=>{ _refQueued = false; _refLast = performance.now(); renderEditorFields(); }); return; }
+    _refLast = _rnow; }
   // The wholesale rebuild below resets the panel's scroll position on every change; restore it once
   // this pass (whichever return path it takes) has finished, before the next paint.
   const _edScroll = editorEl.scrollTop;
