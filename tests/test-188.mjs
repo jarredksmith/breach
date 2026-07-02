@@ -14,7 +14,7 @@ assert(/data\.props \|\| data\.world/.test(imp), 'import does not accept a singl
 assert(/campaign\.levels = levels\.map/.test(imp), 'import does not load the levels');
 assert(/saveCampaign\(\)/.test(imp), 'import does not persist the campaign');
 assert(/renderCampaignPanel\(\)/.test(imp), 'import does not refresh the panel');
-assert(/confirm\(/.test(imp), 'import should confirm before clobbering an existing campaign');
+assert(/uiConfirm\('Replace your current campaign/.test(imp) && /if\(campaign\.levels\.length\) uiConfirm/.test(imp), 'import confirms (themed dialog, build 815) before clobbering an existing campaign');
 
 // UI present in the campaign panel
 const rcp = extractFunction('renderCampaignPanel');

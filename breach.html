@@ -6680,14 +6680,47 @@ async function buildChallengeLink(){
   const chal = _encChallenge({ s:score, w:wave, k:runKills, o:gameCfg.objective });
   return location.origin + location.pathname + '#lvl=' + lvlCode + '&chal=' + chal;
 }
-function flashToast(msg){
+// build 815: toasts QUEUE instead of overwriting — "Checkpoint reached" no longer eats "BOSS DOWN" when events burst.
+// While a queue is waiting, each message shows shorter (1.5s vs 2.6s) so the backlog flows; capped at 4 pending.
+const _toastQ = [];
+let _toastBusy = false;
+function _showToast(msg){
   let t = document.getElementById('toast');
   if(!t){ t = document.createElement('div'); t.id='toast';
     t.style.cssText='position:absolute;top:36px;left:50%;transform:translateX(-50%);z-index:70;background:rgba(8,18,22,.92);border:1px solid rgba(var(--accent-rgb),.45);color:#cfeee2;padding:9px 16px;border-radius:8px;font-size:13px;letter-spacing:1px;pointer-events:none;transition:opacity .3s;';
     document.body.appendChild(t); }
-  t.textContent = msg; t.style.opacity='1';
-  clearTimeout(t._t); t._t = setTimeout(()=>{ t.style.opacity='0'; }, 2600);
+  t.textContent = msg; t.style.opacity='1'; _toastBusy=true;
+  clearTimeout(t._t);
+  t._t = setTimeout(()=>{ t.style.opacity='0'; _toastBusy=false;
+    const next=_toastQ.shift(); if(next!=null) setTimeout(()=>_showToast(next), 180);   // small gap so back-to-back messages read as separate
+  }, _toastQ.length ? 1500 : 2600);
 }
+function flashToast(msg){
+  if(_toastBusy){ if(_toastQ[_toastQ.length-1]!==msg){ _toastQ.push(msg); if(_toastQ.length>4) _toastQ.shift(); } return; }   // dedupe repeats; cap the backlog
+  _showToast(msg);
+}
+// build 815: themed in-game dialogs — native confirm()/alert() yank the player out of fullscreen and ignore the theme.
+function _uiDialog(msg, buttons){
+  const back=document.createElement('div');
+  back.style.cssText='position:fixed;inset:0;z-index:120;background:rgba(3,7,10,0.66);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);';
+  const card=document.createElement('div');
+  card.style.cssText='background:rgba(9,17,21,0.97);border:1px solid rgba(var(--accent-rgb),0.45);border-radius:12px;padding:20px 24px;max-width:min(440px,86vw);color:#cfeee2;font-size:14px;line-height:1.55;box-shadow:0 18px 60px rgba(0,0,0,0.6);';
+  const txt=document.createElement('div'); txt.textContent=msg; card.appendChild(txt);
+  const row=document.createElement('div'); row.style.cssText='display:flex;gap:10px;justify-content:flex-end;margin-top:16px;';
+  const close=(fn)=>{ try{ document.body.removeChild(back); }catch(e){} removeEventListener('keydown', onKey, true); if(fn) fn(); };
+  const onKey=(e)=>{ if(e.key==='Escape'){ e.stopPropagation(); e.preventDefault(); close(buttons[0] && !buttons[0].primary ? buttons[0].fn : null); } };
+  for(const b of buttons){
+    const btn=document.createElement('button'); btn.textContent=b.label;
+    btn.style.cssText='padding:7px 18px;font-size:13px;font-weight:600;border-radius:7px;cursor:pointer;min-height:34px;border:1px solid '+(b.primary?'var(--accent)':'rgba(255,255,255,0.25)')+';background:'+(b.primary?'rgba(var(--accent-rgb),0.2)':'transparent')+';color:'+(b.primary?'#eafff7':'#9fb6c6')+';';
+    btn.onclick=()=>close(b.fn);
+    row.appendChild(btn);
+  }
+  card.appendChild(row); back.appendChild(card); document.body.appendChild(back);
+  back.addEventListener('pointerdown', (e)=>{ if(e.target===back) close(buttons[0] && !buttons[0].primary ? buttons[0].fn : null); });
+  addEventListener('keydown', onKey, true);
+}
+function uiConfirm(msg, onYes, yesLabel){ _uiDialog(msg, [ { label:'Cancel' }, { label:yesLabel||'Confirm', primary:true, fn:onYes } ]); }
+function uiNotice(msg){ _uiDialog(msg, [ { label:'OK', primary:true } ]); }
 // build 700: ~19 call sites notify via `toast(msg)` behind an `if(typeof toast==='function')` guard, but `toast`
 // was never defined — so those notices (Checkpoint reached, Respawned, AI-furnish progress, key saved, texture
 // cap…) silently never showed. Alias it to the real toaster so the guard passes and the messages appear.
@@ -16257,7 +16290,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 814 · 2026-07-02';
+const BUILD_VERSION = 'build 815 · 2026-07-02';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -19254,7 +19287,7 @@ function _openCinePvWindow(){
   if(_cinePvWin && !_cinePvWin.closed){ try{ _cinePvWin.focus(); }catch(e){} return; }
   _ensureCinePvPanel();   // make sure the header exists to move into the popup
   const w = window.open('', 'breach-cine-preview', 'width=672,height=432,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
-  if(!w){ alert('Could not open a separate window — your browser blocked the popup. Allow popups for this page and try again.'); return; }
+  if(!w){ uiNotice('Could not open a separate window — your browser blocked the popup. Allow popups for this page and try again.'); return; }
   try{
     w.document.open(); w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>BREACH — camera preview</title></head><body></body></html>'); w.document.close();
     for(const s of document.querySelectorAll('style')){ const ns=w.document.createElement('style'); ns.textContent=s.textContent; w.document.head.appendChild(ns); }   // copy styles so --accent etc. resolve
@@ -21126,12 +21159,15 @@ function _importCampaignFile(file, onDone){
     if(data && Array.isArray(data.levels)) levels = data.levels;          // a campaign file
     else if(data && (data.props || data.world)) levels = [data];          // a single-level file -> 1-level campaign
     if(!levels || !levels.length){ if(typeof flashToast==='function') flashToast('Import failed: no levels in that file'); return; }
-    if(campaign.levels.length && !confirm('Replace your current campaign (' + campaign.levels.length + ' level' + (campaign.levels.length>1?'s':'') + ') with the imported ' + levels.length + '?')) return;
-    campaign.levels = levels.map((lv,i)=> Object.assign({}, lv, { name: (lv && lv.name!=null) ? lv.name : ('Level '+(i+1)) }));
-    campaignEditIdx = -1; saveCampaign();
-    if(typeof onDone==='function'){ onDone(); return; }
-    if(typeof renderCampaignPanel==='function') renderCampaignPanel();
-    if(typeof flashToast==='function') flashToast('Imported ' + campaign.levels.length + ' level' + (campaign.levels.length>1?'s':'') + ' - hit Play campaign');
+    const _doImport = ()=>{   // build 815: themed dialog (was a native browser popup)
+      campaign.levels = levels.map((lv,i)=> Object.assign({}, lv, { name: (lv && lv.name!=null) ? lv.name : ('Level '+(i+1)) }));
+      campaignEditIdx = -1; saveCampaign();
+      if(typeof onDone==='function'){ onDone(); return; }
+      if(typeof renderCampaignPanel==='function') renderCampaignPanel();
+      if(typeof flashToast==='function') flashToast('Imported ' + campaign.levels.length + ' level' + (campaign.levels.length>1?'s':'') + ' - hit Play campaign');
+    };
+    if(campaign.levels.length) uiConfirm('Replace your current campaign (' + campaign.levels.length + ' level' + (campaign.levels.length>1?'s':'') + ') with the imported ' + levels.length + '?', _doImport, 'Replace');
+    else _doImport();
   };
   reader.readAsText(file);
 }
@@ -21957,7 +21993,7 @@ function buildEditorPanel(){
       pop.onclick = ()=>{
         if(ed._popWin){ try{ ed._popWin.close(); }catch(e){} reDock(); return; }
         const w = window.open('', 'breach-editor', 'width=460,height=900,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no');
-        if(!w){ alert('Could not open a separate window \u2014 your browser blocked the popup. Allow popups for this page and try again.'); return; }
+        if(!w){ uiNotice('Could not open a separate window \u2014 your browser blocked the popup. Allow popups for this page and try again.'); return; }
         try{
           w.document.open(); w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>BREACH \u2014 editor</title></head><body></body></html>'); w.document.close();
           for(const s of document.querySelectorAll('style')){ const ns=w.document.createElement('style'); ns.textContent=s.textContent; w.document.head.appendChild(ns); }
@@ -22450,7 +22486,7 @@ function renderInvItems(host){
     for(const id of ids){ const it=invCatalog[id];
       const row=document.createElement('div'); row.style.cssText='display:flex;align-items:center;gap:6px;background:'+(id===_editInvId?'#13303a':'#0c1822')+';border:1px solid #24323a;border-radius:6px;padding:4px 8px;';
       const nm=document.createElement('button'); nm.textContent=(it.type==='journal'?'\ud83d\udcd6 ':'\ud83d\udce6 ')+(it.name||id); nm.style.cssText='flex:1;text-align:left;background:none;border:none;color:#cfeee2;font-size:12px;cursor:pointer;padding:0;'; nm.onclick=()=>{ _editInvId=(_editInvId===id?null:id); renderInvItems(host); };
-      const del=document.createElement('button'); del.textContent='\u2715'; del.title='Delete'; del.style.cssText='flex:0 0 auto;font-size:11px;padding:1px 7px;'; del.onclick=()=>{ if(!confirm('Delete item "'+(it.name||id)+'"? Any pickup set to grant it will keep the id but find nothing.')) return; pushUndoSnapshot(); delete invCatalog[id]; if(_editInvId===id) _editInvId=null; renderInvItems(host); };
+      const del=document.createElement('button'); del.textContent='\u2715'; del.title='Delete'; del.style.cssText='flex:0 0 auto;font-size:11px;padding:1px 7px;'; del.onclick=()=>{ uiConfirm('Delete item "'+(it.name||id)+'"? Any pickup set to grant it will keep the id but find nothing.', ()=>{ pushUndoSnapshot(); delete invCatalog[id]; if(_editInvId===id) _editInvId=null; renderInvItems(host); }, 'Delete'); };
       row.appendChild(nm); row.appendChild(del); list.appendChild(row); }
     host.appendChild(list); }
   const addB=document.createElement('button'); addB.textContent='+ New item'; addB.onclick=()=>{ pushUndoSnapshot(); const id=_newInvId(); defineItem({ id, name:'New Item', type:'object' }); _editInvId=id; renderInvItems(host); }; host.appendChild(addB);
