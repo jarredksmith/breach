@@ -12377,7 +12377,7 @@ function tintAvatar(mesh, tm){
   if(tm==null) return; const col=TEAM_COLOR[tm], emis=TEAM_EMIS[tm];
   const vis=mesh.userData.visual;
   if(vis && !mesh.userData.hasModel){ vis.traverse(o=>{ if(o.isMesh && o.material && o.material.color){ o.material.color.setHex(col); if(o.material.emissive) o.material.emissive.setHex(emis); } }); }
-  if(mesh.userData.label){ mesh.remove(mesh.userData.label); const l=makeNameSprite(mesh.userData._name||'', tm); l.position.y=2.5; mesh.add(l); mesh.userData.label=l; }
+  if(mesh.userData.label){ if(typeof disposeAvatarLabel==='function') disposeAvatarLabel(mesh); mesh.remove(mesh.userData.label); const l=makeNameSprite(mesh.userData._name||'', tm); l.position.y=2.5; mesh.add(l); mesh.userData.label=l; }   // build 813: dispose the OLD tag texture before replacing (this fires on every team re-tint)
 }
 function duelHUD(){
   const wn=document.getElementById('waveNum'); if(!wn) return;
@@ -12608,6 +12608,13 @@ function makeNameSprite(text, team){
   const spr=new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), depthTest:true, depthWrite:false, transparent:true }));   // depthTest so walls/props hide the tag (no see-through wallhack); depthWrite off so it doesn't occlude other transparents
   spr.scale.set(2.4,0.6,1);
   return spr;
+}
+// build 813: each name sprite owns a 256x64 CanvasTexture. They were dropped without dispose on player leave and on every
+// team re-tint — the audit's only genuinely unbounded VRAM leak. Call this before removing/replacing an avatar's label.
+function disposeAvatarLabel(mesh){
+  const l = mesh && mesh.userData && mesh.userData.label; if(!l || !l.material) return;
+  if(l.material.map && l.material.map.dispose) l.material.map.dispose();
+  if(l.material.dispose) l.material.dispose();
 }
 const remoteBodyGeo = new THREE.CapsuleGeometry(0.5, 1.2, 4, 8);
 // ---- Player avatar (what teammates / duel opponents see). Default = blue capsule; swappable for a GLB. ----
@@ -13129,6 +13136,8 @@ function _charHex(i){ return '#'+CHARACTERS[i].color.toString(16).padStart(6,'0'
 function updateCharBtnLabel(){ const rc=(myRosterIdx>=0 && charRoster[myRosterIdx])?charRoster[myRosterIdx]:null; const nm=rc?_esc(rc.name):CHARACTERS[myCharIdx].name; const html='CHARACTER: <b style="color:'+_charHex(myCharIdx)+'">'+nm+'</b> \u25b8'; ['charBtn','lobbyCharBtn'].forEach(id=>{ const b=document.getElementById(id); if(b) b.innerHTML=html; }); }
 // --- live 3D model thumbnails for the character picker cards (one shared offscreen renderer; results cached by model) ---
 let _thumbR=null, _thumbScene=null, _thumbCam=null; const _thumbCache={};
+const _THUMB_CACHE_MAX = 64;   // build 813: LRU-ish cap — data-URL PNGs (~10KB each) accumulated forever while browsing models
+function _thumbCachePut(k, url){ const keys=Object.keys(_thumbCache); if(keys.length>=_THUMB_CACHE_MAX) delete _thumbCache[keys[0]]; _thumbCache[k]=url; }
 function _ensureThumbR(){
   if(_thumbR!==null) return !!_thumbR;
   try{
@@ -13164,7 +13173,7 @@ function _renderCharThumb(cfg, swatchEl){
       _thumbR.render(_thumbScene, _thumbCam);
       const url=_thumbR.domElement.toDataURL('image/png');
       _thumbScene.remove(root);
-      _thumbCache[k]=url; apply(url);
+      _thumbCachePut(k, url); apply(url);
     }catch(e){}
   }, ()=>{});
 }
@@ -13193,7 +13202,7 @@ function ensureRemotePlayer(id, name){
   if(!rp){ const cfg=(NET.charById&&NET.charById[id])||null; rp={ mesh:makeRemotePlayer(name||('P'+id), cfg), posEye:new THREE.Vector3(), target:new THREE.Vector3(), yaw:0, pitch:0, hp:100, wep:0, name:name||('P'+id), modelCfg:cfg, mt:-1, ready:false }; NET.players[id]=rp; if(teamMode() && NET.teams[id]!=null) tintAvatar(rp.mesh, NET.teams[id]); }
   return rp;
 }
-function removeRemotePlayer(id){ const rp=NET.players[id]; if(rp){ scene.remove(rp.mesh); delete NET.players[id]; } }
+function removeRemotePlayer(id){ const rp=NET.players[id]; if(rp){ if(typeof disposeAvatarLabel==='function') disposeAvatarLabel(rp.mesh); scene.remove(rp.mesh); delete NET.players[id]; } }   // build 813: free the name-tag texture
 // build 578: host-side cleanup when a client leaves (clean close, error, or a liveness timeout). The next world
 // snapshot omits them, so every other client prunes the avatar automatically (see the snapshot handler).
 function dropClient(pid, why){
@@ -13494,7 +13503,7 @@ function handleClientMsg(conn, msg){
   if(msg.t==='st'){ setRemoteState(id, msg); }
   else if(msg.t==='hit'){ const en=enemies.find(e=>e.id===msg.e); if(en){ spark(en.mesh.position, 0xff6b6b); const _s=NET.players[id]; _coopKillFor=id; const _killed=enemyHurt(en, msg.d, (_s&&_s.posEye)?_s.posEye.x:null, (_s&&_s.posEye)?_s.posEye.z:null); _coopKillFor=null; if(_killed) sendToPlayer(id, {t:'frag'}); } }   // tell the client it scored, so it gets multi-kill callouts
   else if(msg.t==='ready'){ const rp=NET.players[id]; if(rp) rp.ready=!!msg.r; if(NET.phase==='lobby') refreshLobby(); }   // build 552: a client toggled ready in the lobby -> reflect it for everyone
-  else if(msg.t==='name'){ const rp=ensureRemotePlayer(id, msg.n); rp.name=msg.n; rp.mesh.userData._name=msg.n; if(rp.mesh.userData.label){ rp.mesh.remove(rp.mesh.userData.label); const l=makeNameSprite(msg.n, teamMode()?NET.teams[id]:undefined); l.position.y=2.5; rp.mesh.add(l); rp.mesh.userData.label=l; } if(msg.char){ applyRemoteChar(id, msg.char); for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'char', from:id, cfg:msg.char}); }catch(e){} } } } if(NET.phase==='lobby') refreshLobby(); }
+  else if(msg.t==='name'){ const rp=ensureRemotePlayer(id, msg.n); rp.name=msg.n; rp.mesh.userData._name=msg.n; if(rp.mesh.userData.label){ if(typeof disposeAvatarLabel==='function') disposeAvatarLabel(rp.mesh); rp.mesh.remove(rp.mesh.userData.label); const l=makeNameSprite(msg.n, teamMode()?NET.teams[id]:undefined); l.position.y=2.5; rp.mesh.add(l); rp.mesh.userData.label=l; } if(msg.char){ applyRemoteChar(id, msg.char); for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'char', from:id, cfg:msg.char}); }catch(e){} } } } if(NET.phase==='lobby') refreshLobby(); }
   else if(msg.t==='pvpHit'){ applyPvpDamage(msg.d, msg.from); if(msg.kx!=null){ player.extVel.x+=msg.kx; player.extVel.z+=msg.kz; player.vel.y=Math.max(player.vel.y,msg.ky||0); player.onGround=false; } }       // a client shot the host (build 797: a car ram also flings us)
   else if(msg.t==='fire'){ remoteFire(id, msg.o, msg.d, msg.w); for(const cid in NET.conns){ if(+cid!==id){ try{ NET.conns[cid].send({t:'fire', from:id, o:msg.o, d:msg.d, w:msg.w}); }catch(e){} } } }   // show + relay the shot
   else if(msg.t==='died'){ registerDuelKill(msg.by, id); }            // a client died; credit the killer
@@ -16248,7 +16257,7 @@ function pickGamepad(pads){
   return (best && bestScore>-1e8) ? best : null;
 }
 // === BUILD VERSION — bumped every iteration so you can confirm you're on the latest file ===
-const BUILD_VERSION = 'build 812 · 2026-07-02';
+const BUILD_VERSION = 'build 813 · 2026-07-02';
 // Live diagnostic — toggle with `, switch active pad with ]. Lists every device the browser reports.
 function updatePadDebug(pads, gp){
   const el = $('padDebug'); if(!el || el.style.display==='none') return;
@@ -17869,7 +17878,9 @@ function spawnCorpse(mesh, dirx, diry, dirz, force){
   if(_corpses.length>RAGDOLL_MAX){ _removeCorpse(_corpses.shift()); }   // recycle the oldest
   return true;
 }
-function _removeCorpse(c){ if(!c) return; if(c.body && physWorld){ try{ physWorld.removeRigidBody(c.body); }catch(e){} } if(c.mesh) scene.remove(c.mesh); c.body=null; }
+function _removeCorpse(c){ if(!c) return; if(c.body && physWorld){ try{ physWorld.removeRigidBody(c.body); }catch(e){} }
+  if(c.mesh){ scene.remove(c.mesh); c.mesh.traverse(o=>{ if(o.isMesh && o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>{ if(m && m.dispose) m.dispose(); }); } }); }   // build 813: corpse materials are corpse-owned CLONES (spawnCorpse clones for the fade) — safe + correct to dispose
+  c.body=null; }
 function updateCorpses(dt){
   for(let i=_corpses.length-1;i>=0;i--){
     const c=_corpses[i]; c.t+=dt;
